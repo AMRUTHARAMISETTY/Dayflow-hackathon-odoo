@@ -3,6 +3,7 @@ package com.dayflow.auth.repo;
 import com.dayflow.auth.model.AuthModels.User;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.*;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -44,12 +45,12 @@ public class AuthRepository {
   }
   public void failedLogin(UUID id, int attempts, Instant lockedUntil) {
     db.sql("UPDATE users SET failed_attempts=:a,locked_until=:l,updated_at=now() WHERE id=:id")
-      .param("a", attempts).param("l", lockedUntil).param("id", id).update();
+      .param("a", attempts).param("l", lockedUntil == null ? null : Timestamp.from(lockedUntil)).param("id", id).update();
   }
   public void successfulLogin(UUID id) { db.sql("UPDATE users SET failed_attempts=0,locked_until=NULL,updated_at=now() WHERE id=:id").param("id", id).update(); }
   public UUID createRefreshSession(UUID userId, String tokenHash, String device, String uaHash, String ipPrefix, Instant expires) {
     return db.sql("INSERT INTO refresh_sessions(user_id,token_hash,device_name,user_agent_hash,ip_prefix,expires_at) VALUES(:u,:t,:d,:a,:ip,:e) RETURNING id")
-      .param("u",userId).param("t",tokenHash).param("d",device).param("a",uaHash).param("ip",ipPrefix).param("e",expires).query(UUID.class).single();
+      .param("u",userId).param("t",tokenHash).param("d",device).param("a",uaHash).param("ip",ipPrefix).param("e",Timestamp.from(expires)).query(UUID.class).single();
   }
   public Optional<Map<String,Object>> refreshSession(String hash) {
     return db.sql("SELECT id,user_id,expires_at,revoked_at,replaced_by FROM refresh_sessions WHERE token_hash=:h FOR UPDATE").param("h",hash).query().listOfRows().stream().findFirst();
@@ -65,13 +66,13 @@ public class AuthRepository {
   public List<Map<String,Object>> securityEvents(UUID userId) { return db.sql("SELECT id,event_type,severity,metadata,created_at FROM security_events WHERE user_id=:u ORDER BY created_at DESC LIMIT 100").param("u",userId).query().listOfRows(); }
   public void storeOtp(UUID userId, String purpose, String hash, Instant expires) {
     db.sql("UPDATE email_verification_tokens SET consumed_at=now() WHERE user_id=:u AND purpose=:p AND consumed_at IS NULL").param("u",userId).param("p",purpose).update();
-    db.sql("INSERT INTO email_verification_tokens(user_id,purpose,token_hash,expires_at) VALUES(:u,:p,:h,:e)").param("u",userId).param("p",purpose).param("h",hash).param("e",expires).update();
+    db.sql("INSERT INTO email_verification_tokens(user_id,purpose,token_hash,expires_at) VALUES(:u,:p,:h,:e)").param("u",userId).param("p",purpose).param("h",hash).param("e",Timestamp.from(expires)).update();
   }
   public boolean consumeOtp(UUID userId, String purpose, String hash) {
     return db.sql("UPDATE email_verification_tokens SET consumed_at=now() WHERE user_id=:u AND purpose=:p AND token_hash=:h AND consumed_at IS NULL AND expires_at>now() AND attempts<5")
       .param("u",userId).param("p",purpose).param("h",hash).update() == 1;
   }
-  public void storeReset(UUID userId, String hash, Instant expires) { db.sql("INSERT INTO password_reset_tokens(user_id,token_hash,expires_at) VALUES(:u,:h,:e)").param("u",userId).param("h",hash).param("e",expires).update(); }
+  public void storeReset(UUID userId, String hash, Instant expires) { db.sql("INSERT INTO password_reset_tokens(user_id,token_hash,expires_at) VALUES(:u,:h,:e)").param("u",userId).param("h",hash).param("e",Timestamp.from(expires)).update(); }
   public Optional<UUID> consumeReset(String hash) { return db.sql("UPDATE password_reset_tokens SET consumed_at=now() WHERE token_hash=:h AND consumed_at IS NULL AND expires_at>now() RETURNING user_id").param("h",hash).query(UUID.class).optional(); }
   public void updatePassword(UUID userId, String hash) { db.sql("UPDATE users SET password_hash=:h,password_changed_at=now(),failed_attempts=0,locked_until=NULL WHERE id=:u").param("h",hash).param("u",userId).update(); }
   public void activate(UUID userId,String hash){db.sql("UPDATE users SET password_hash=:h,status='ACTIVE',email_verified=true,activated_at=now(),password_changed_at=now() WHERE id=:u AND status='PENDING'").param("h",hash).param("u",userId).update();}

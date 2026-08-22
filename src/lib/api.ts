@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080"
+// Use Vite's same-origin development proxy by default. Deployments can point
+// directly at a separate API host with VITE_API_URL.
+const API_URL = import.meta.env.VITE_API_URL ?? ""
 let accessToken: string | null = null
 let refreshPromise: Promise<boolean> | null = null
 let csrf: { token: string; headerName: string } | null = null
