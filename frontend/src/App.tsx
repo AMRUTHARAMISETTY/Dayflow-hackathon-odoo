@@ -1,244 +1,78 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  Bell,
-  BriefcaseBusiness,
-  CalendarDays,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  LayoutDashboard,
-  LifeBuoy,
-  Mail,
-  Menu,
-  Moon,
-  Search,
-  Settings,
-  ShieldCheck,
-  Sparkles,
-  Sun,
-  Users,
-  WalletCards,
-  Workflow,
-  X
-} from "lucide-react";
-import { api, AppUser, login } from "./lib/api";
-import { storage } from "./lib/storage";
+import type { ReactNode } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { AppShell } from "./components/AppShell";
+import { PermissionDenied } from "./components/StateViews";
+import { useAuth } from "./lib/auth-context";
+import { AcceptInvitationPage } from "./pages/AcceptInvitationPage";
+import { ApprovalsPage } from "./pages/ApprovalsPage";
+import { AttendancePage } from "./pages/AttendancePage";
+import { AuditLogPage } from "./pages/AuditLogPage";
+import { AutomationRulesPage } from "./pages/AutomationRulesPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { EmployeeProfilePage } from "./pages/EmployeeProfilePage";
 import { EmployeesPage } from "./pages/EmployeesPage";
-import { OperationsPage } from "./pages/OperationsPage";
+import { InvitationsPage } from "./pages/InvitationsPage";
+import { LeavePage } from "./pages/LeavePage";
+import { LoginPage } from "./pages/LoginPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
+import { OrgChartPage } from "./pages/OrgChartPage";
+import { ProjectsPage } from "./pages/ProjectsPage";
+import { RegisterPage } from "./pages/RegisterPage";
+import { RolesPage } from "./pages/RolesPage";
+import { TasksPage } from "./pages/TasksPage";
+import { TeamsPage } from "./pages/TeamsPage";
+import { WorkloadPage } from "./pages/WorkloadPage";
 
-type View = "overview" | "employees" | "approvals" | "payroll" | "email" | "tickets" | "automation" | "audit";
-type Toast = { id: number; tone: "success" | "error" | "info"; message: string };
+function RequirePermission({ anyOf, children }: { anyOf: string[]; children: ReactNode }) {
+  const { can } = useAuth();
+  if (!anyOf.some((permission) => can(permission))) return <PermissionDenied />;
+  return <>{children}</>;
+}
 
-const navGroups = [
-  { label: "Workspace", items: [["overview", "Overview", LayoutDashboard], ["approvals", "My Tasks", CheckCircle2], ["overview", "Calendar", CalendarDays], ["overview", "Notifications", Bell]] },
-  { label: "People", items: [["employees", "Employees", Users], ["employees", "Organization Chart", BriefcaseBusiness], ["employees", "Onboarding", Sparkles], ["employees", "Documents", FileText]] },
-  { label: "Finance", items: [["payroll", "Payroll", WalletCards], ["payroll", "Payroll Exceptions", ShieldCheck]] },
-  { label: "Communication", items: [["email", "HR Email", Mail], ["email", "Email Templates", Mail]] },
-  { label: "Employee Experience", items: [["tickets", "HR Help Desk", LifeBuoy]] },
-  { label: "Administration", items: [["automation", "Workflow Builder", Workflow], ["audit", "Audit Logs", Settings]] }
-] as const;
+function Protected({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="auth-screen"><div className="brand-mark">D</div></div>;
+  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
 
-const permissionByView: Record<View, string> = {
-  overview: "dashboard:read",
-  employees: "employee:read",
-  approvals: "approval:read",
-  payroll: "payroll:read",
-  email: "email:write",
-  tickets: "ticket:read",
-  automation: "automation:read",
-  audit: "audit:read"
-};
+function PublicOnly({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (user) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
 
 export function App() {
-  const [user, setUser] = useState<AppUser | null>(null);
-  const [view, setView] = useState<View>("overview");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [dark, setDark] = useState(false);
-  const [online, setOnline] = useState(navigator.onLine);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-
-  useEffect(() => {
-    const token = storage.getItem("dayflow.token");
-    if (token) api<AppUser>("/api/auth/me").then(setUser).catch(() => storage.removeItem("dayflow.token"));
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    window.addEventListener("online", on);
-    window.addEventListener("offline", off);
-    return () => {
-      window.removeEventListener("online", on);
-      window.removeEventListener("offline", off);
-    };
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = dark ? "dark" : "light";
-  }, [dark]);
-
-  const notify = (tone: Toast["tone"], message: string) => {
-    const id = Date.now();
-    setToasts((items) => [...items, { id, tone, message }]);
-    window.setTimeout(() => setToasts((items) => items.filter((item) => item.id !== id)), 4200);
-  };
-
-  if (!user) return <LoginScreen onLogin={setUser} notify={notify} />;
-
-  const can = (target: View) => user.permissions.includes(permissionByView[target]);
-  const visibleGroups = navGroups.map((group) => ({
-    ...group,
-    items: group.items.filter(([target]) => can(target as View))
-  })).filter((group) => group.items.length > 0);
-
-  const content = (
-    <PortalContent
-      view={view}
-      user={user}
-      notify={notify}
-      setView={setView}
-    />
-  );
-
   return (
-    <div className="app-shell">
-      <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
-        <Brand collapsed={sidebarCollapsed} />
-        <button className="icon-button collapse" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} aria-label="Toggle sidebar">
-          {sidebarCollapsed ? <ChevronRight /> : <ChevronLeft />}
-        </button>
-        <Navigation groups={visibleGroups} view={view} setView={(next) => setView(next)} collapsed={sidebarCollapsed} />
-      </aside>
+    <Routes>
+      <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
+      <Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} />
+      <Route path="/accept-invitation" element={<PublicOnly><AcceptInvitationPage /></PublicOnly>} />
 
-      <div className="mobile-bar">
-        <button className="icon-button" onClick={() => setDrawerOpen(true)} aria-label="Open navigation"><Menu /></button>
-        <Brand collapsed={false} />
-      </div>
+      <Route path="/" element={<Protected><AppShell /></Protected>}>
+        <Route index element={<RequirePermission anyOf={["dashboard:read"]}><DashboardPage /></RequirePermission>} />
+        <Route path="employees" element={<RequirePermission anyOf={["employee:read", "employee:read:reports", "employee:read:own"]}><EmployeesPage /></RequirePermission>} />
+        <Route path="employees/:id" element={<RequirePermission anyOf={["employee:read", "employee:read:reports", "employee:read:own"]}><EmployeeProfilePage /></RequirePermission>} />
+        <Route path="org-chart" element={<RequirePermission anyOf={["orgchart:read"]}><OrgChartPage /></RequirePermission>} />
+        <Route path="teams" element={<RequirePermission anyOf={["team:read"]}><TeamsPage /></RequirePermission>} />
+        <Route path="attendance" element={<RequirePermission anyOf={["attendance:checkin", "attendance:read", "attendance:read:reports", "attendance:read:own"]}><AttendancePage /></RequirePermission>} />
+        <Route path="attendance/corrections" element={<Navigate to="/attendance?tab=corrections" replace />} />
+        <Route path="leave" element={<RequirePermission anyOf={["leave:read:own", "leave:read", "leave:read:reports", "leave:request"]}><LeavePage /></RequirePermission>} />
+        <Route path="leave/approvals" element={<Navigate to="/leave?tab=approvals" replace />} />
+        <Route path="projects" element={<RequirePermission anyOf={["project:read"]}><ProjectsPage /></RequirePermission>} />
+        <Route path="tasks" element={<RequirePermission anyOf={["task:read"]}><TasksPage /></RequirePermission>} />
+        <Route path="workload" element={<RequirePermission anyOf={["workload:read"]}><WorkloadPage /></RequirePermission>} />
+        <Route path="approvals" element={<RequirePermission anyOf={["leave:approve", "attendance:approve_correction", "employee:write"]}><ApprovalsPage /></RequirePermission>} />
+        <Route path="automation" element={<RequirePermission anyOf={["automation:read"]}><AutomationRulesPage /></RequirePermission>} />
+        <Route path="notifications" element={<RequirePermission anyOf={["notification:read"]}><NotificationsPage /></RequirePermission>} />
+        <Route path="audit-logs" element={<RequirePermission anyOf={["audit:read"]}><AuditLogPage /></RequirePermission>} />
+        <Route path="roles" element={<RequirePermission anyOf={["role:read"]}><RolesPage /></RequirePermission>} />
+        <Route path="invitations" element={<RequirePermission anyOf={["invitation:read"]}><InvitationsPage /></RequirePermission>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
 
-      {drawerOpen && (
-        <div className="drawer-backdrop" role="presentation" onClick={() => setDrawerOpen(false)}>
-          <nav className="drawer" onClick={(event) => event.stopPropagation()}>
-            <button className="icon-button drawer-close" onClick={() => setDrawerOpen(false)} aria-label="Close navigation"><X /></button>
-            <Navigation groups={visibleGroups} view={view} setView={(next) => { setView(next); setDrawerOpen(false); }} collapsed={false} />
-          </nav>
-        </div>
-      )}
-
-      <main className="workspace">
-        <header className="topbar">
-          <div>
-            <div className="breadcrumbs">Dayflow / {labelFor(view)}</div>
-            <h1>{labelFor(view)}</h1>
-          </div>
-          <div className="topbar-actions">
-            <label className="search">
-              <Search size={18} />
-              <input aria-label="Global search" placeholder="Search people, tasks, policies" onKeyDown={(event) => {
-                if (event.key === "Enter") notify("info", `Search queued for "${event.currentTarget.value}"`);
-              }} />
-            </label>
-            <select aria-label="Quick create" onChange={(event) => {
-              if (event.target.value) notify("success", `${event.target.value} flow opened`);
-              event.target.value = "";
-            }}>
-              <option value="">Quick Create</option>
-              <option>Employee</option>
-              <option>Announcement</option>
-              <option>HR Ticket</option>
-              <option>Automation Rule</option>
-            </select>
-            <button className="icon-button" onClick={() => notify("info", "Notification center refreshed")} aria-label="Notifications"><Bell /></button>
-            <button className="icon-button" onClick={() => setDark(!dark)} aria-label="Toggle theme">{dark ? <Sun /> : <Moon />}</button>
-            <div className="profile">
-              <strong>{user.name}</strong>
-              <span>{user.role}</span>
-            </div>
-          </div>
-        </header>
-        <div className={`connection ${online ? "online" : "offline"}`}>{online ? "Online" : "Offline: last loaded data remains visible"}</div>
-        {content}
-      </main>
-
-      <div className="toasts" aria-live="polite">
-        {toasts.map((toast) => <div className={`toast ${toast.tone}`} key={toast.id}>{toast.message}</div>)}
-      </div>
-    </div>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
-}
-
-function LoginScreen({ onLogin, notify }: { onLogin: (user: AppUser) => void; notify: (tone: Toast["tone"], message: string) => void }) {
-  const [email, setEmail] = useState("admin@dayflow.test");
-  const [password, setPassword] = useState("Dayflow@123");
-  const [loading, setLoading] = useState(false);
-  return (
-    <main className="login">
-      <section className="login-panel">
-        <div className="brand-mark">D</div>
-        <h1>Dayflow</h1>
-        <p>Every workday, perfectly aligned.</p>
-        <form onSubmit={async (event) => {
-          event.preventDefault();
-          setLoading(true);
-          try {
-            onLogin(await login(email, password));
-            notify("success", "Signed in securely");
-          } catch (error) {
-            notify("error", error instanceof Error ? error.message : "Login failed");
-          } finally {
-            setLoading(false);
-          }
-        }}>
-          <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required /></label>
-          <label>Password<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" required /></label>
-          <button className="primary" disabled={loading}>{loading ? "Signing in..." : "Sign in"}</button>
-        </form>
-      </section>
-    </main>
-  );
-}
-
-function PortalContent({ view, user, notify, setView }: { view: View; user: AppUser; notify: (tone: Toast["tone"], message: string) => void; setView: (view: View) => void }) {
-  if (!user.permissions.includes(permissionByView[view])) return <Denied />;
-  if (view === "overview") return <DashboardPage notify={notify} setView={setView} />;
-  if (view === "employees") return <EmployeesPage notify={notify} />;
-  return <OperationsPage view={view} notify={notify} permissions={user.permissions} />;
-}
-
-function Navigation({ groups, view, setView, collapsed }: { groups: { label: string; items: readonly (readonly [string, string, typeof LayoutDashboard])[] }[]; view: View; setView: (view: View) => void; collapsed: boolean }) {
-  return (
-    <div className="nav-groups">
-      {groups.map((group) => (
-        <section key={group.label}>
-          {!collapsed && <p>{group.label}</p>}
-          {group.items.map(([target, label, Icon]) => (
-            <button key={`${group.label}-${label}`} className={view === target ? "active" : ""} onClick={() => setView(target as View)} title={label}>
-              <Icon size={19} />
-              {!collapsed && <span>{label}</span>}
-            </button>
-          ))}
-        </section>
-      ))}
-    </div>
-  );
-}
-
-function Brand({ collapsed }: { collapsed: boolean }) {
-  return <div className="brand"><div className="brand-mark">D</div>{!collapsed && <div><strong>Dayflow</strong><span>HR Command</span></div>}</div>;
-}
-
-function Denied() {
-  return <section className="state"><ShieldCheck /><h2>Access restricted</h2><p>Your current role does not include this permission. Ask a Super Admin to adjust access.</p></section>;
-}
-
-function labelFor(view: View) {
-  return ({
-    overview: "Overview",
-    employees: "Employees",
-    approvals: "Approvals",
-    payroll: "Payroll Exceptions",
-    email: "HR Email",
-    tickets: "HR Help Desk",
-    automation: "Automation Rules",
-    audit: "Audit Logs"
-  } satisfies Record<View, string>)[view];
 }

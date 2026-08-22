@@ -1,119 +1,149 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Check, Clock3, RefreshCcw, SlidersHorizontal } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { api, Dashboard } from "../lib/api";
-import { storage } from "../lib/storage";
+import { useNavigate } from "react-router-dom";
+import { fetchDashboard } from "../lib/api";
+import { ErrorState, LoadingSkeleton, StaleDataBanner } from "../components/StateViews";
+import type { DashboardSummary } from "../lib/types";
 
-export function DashboardPage({ notify, setView }: { notify: (tone: "success" | "error" | "info", message: string) => void; setView: (view: any) => void }) {
-  const [data, setData] = useState<Dashboard | null>(() => {
-    const cached = storage.getItem("dayflow.dashboard");
-    return cached ? JSON.parse(cached) : null;
-  });
-  const [loading, setLoading] = useState(!data);
-  const [error, setError] = useState("");
+export function DashboardPage() {
+  const navigate = useNavigate();
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [stale, setStale] = useState(false);
+  const [asOf, setAsOf] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = () => {
     setLoading(true);
-    setError("");
-    try {
-      const dashboard = await api<Dashboard>("/api/hr/dashboard");
-      setData(dashboard);
-      storage.setItem("dayflow.dashboard", JSON.stringify(dashboard));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load dashboard");
-    } finally {
-      setLoading(false);
-    }
+    setError(null);
+    fetchDashboard()
+      .then((result) => {
+        setSummary(result.data);
+        setStale(result.stale);
+        setAsOf(result.asOf);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Could not load the dashboard."))
+      .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(load, []);
 
-  if (loading && !data) return <SkeletonDashboard />;
-  if (!data) return <section className="state"><AlertTriangle /><h2>Dashboard unavailable</h2><p>{error}</p><button className="primary" onClick={load}>Retry</button></section>;
+  if (loading && !summary) {
+    return (
+      <>
+        <div className="kpi-grid">
+          <LoadingSkeleton rows={8} kind="card" />
+        </div>
+      </>
+    );
+  }
+  if (error && !summary) return <ErrorState message={error} onRetry={load} />;
+  if (!summary) return null;
 
   return (
-    <div className="page-grid">
-      <section className="hero-band">
-        <div>
-          <p>{data.organization} · {data.currentDate}</p>
-          <h2>{data.greeting}</h2>
-          <span>Last synchronized {new Date(data.lastSynchronizedAt).toLocaleTimeString()}</span>
-        </div>
-        <div className="filters">
-          <select aria-label="Date range"><option>Last 30 days</option><option>This week</option><option>This quarter</option></select>
-          <select aria-label="Department"><option>All departments</option><option>People Operations</option><option>Engineering</option><option>Finance</option></select>
-          <select aria-label="Location"><option>All locations</option><option>Bengaluru</option><option>Hyderabad</option><option>Mumbai</option></select>
-          <button onClick={() => notify("info", "Dashboard customization saved")}><SlidersHorizontal size={18} /> Customize</button>
-          <button className="icon-button" onClick={load} aria-label="Refresh dashboard"><RefreshCcw /></button>
-        </div>
-      </section>
+    <>
+      {stale && <StaleDataBanner asOf={asOf} />}
+      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>{summary.greeting}</p>
 
-      {error && <div className="inline-error">Showing last successful data. {error}</div>}
-
-      <section className="kpi-grid">
-        {data.kpis.map((kpi) => (
-          <button className="kpi-card" key={kpi.label} onClick={() => notify("info", `${kpi.label} details filtered`)}>
-            <span>{kpi.label}</span>
-            <strong>{kpi.value}</strong>
-            <small className={kpi.trend}>{kpi.comparison}</small>
-          </button>
-        ))}
-      </section>
-
-      <section className="split">
-        <div className="panel">
-          <h3>Needs Your Attention</h3>
-          {data.attention.length === 0 ? <Empty text="No critical HR work is waiting." /> : data.attention.map((item, index) => (
-            <article className="action-row" key={`${item.title}-${index}`}>
-              <div className={`severity ${item.severity.toLowerCase().replace(" ", "-")}`}>{item.severity}</div>
-              <div><strong>{item.title}</strong><span>{item.detail}</span></div>
-              <button onClick={() => notify("success", `${item.action} action opened`)}>{item.action}</button>
-            </article>
-          ))}
-        </div>
-        <div className="panel">
-          <h3>Workforce Trends</h3>
-          <div className="chart-wrap">
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={data.workforceTrend}>
-                <defs>
-                  <linearGradient id="present" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#178a73" stopOpacity={0.32} /><stop offset="100%" stopColor="#178a73" stopOpacity={0.03} /></linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="label" />
-                <YAxis />
-                <Tooltip />
-                <Area type="monotone" dataKey="present" stroke="#178a73" fill="url(#present)" />
-                <Area type="monotone" dataKey="absent" stroke="#b84a62" fill="#b84a6218" />
-              </AreaChart>
-            </ResponsiveContainer>
+      <div className="kpi-grid">
+        {summary.kpis.map((kpi) => (
+          <div
+            key={kpi.key}
+            className={`kpi-card ${kpi.available ? "clickable" : "unavailable"}`}
+            role={kpi.available && kpi.href ? "button" : undefined}
+            tabIndex={kpi.available && kpi.href ? 0 : undefined}
+            onClick={() => kpi.available && kpi.href && navigate(kpi.href)}
+            onKeyDown={(event) => {
+              if (kpi.available && kpi.href && (event.key === "Enter" || event.key === " ")) navigate(kpi.href);
+            }}
+          >
+            <span className="kpi-label">{kpi.label}</span>
+            <span className="kpi-value">{kpi.available ? kpi.value ?? "—" : "Not yet available"}</span>
+            {kpi.note && <span className="kpi-note">{kpi.note}</span>}
           </div>
-        </div>
-      </section>
-
-      <section className="module-grid">
-        {["Onboarding progress", "Offboarding progress", "Document expirations", "Payroll readiness", "Ticket SLA status", "Scheduled emails", "Automation activity", "Upcoming holidays"].map((title) => (
-          <article className="mini-module" key={title}>
-            <Clock3 size={18} />
-            <strong>{title}</strong>
-            <span>Tracked from backend workflows and due dates.</span>
-            <button onClick={() => title.includes("Payroll") ? setView("payroll") : notify("info", `${title} opened`)}>Open</button>
-          </article>
         ))}
-      </section>
+      </div>
 
-      <section className="panel">
-        <h3>Recent HR Activity</h3>
-        {data.recentActivity.map((activity) => <div className="activity" key={activity}><Check size={16} />{activity}</div>)}
-      </section>
-    </div>
+      <div className="grid-two">
+        <div className="panel">
+          <h3>Needs your attention</h3>
+          {summary.needsAttention.length === 0 ? (
+            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Nothing urgent right now.</p>
+          ) : (
+            <div className="attention-list">
+              {summary.needsAttention.map((item, index) => (
+                <div className="attention-item" key={index}>
+                  <div>
+                    <span className={`severity-pill ${item.severity.toLowerCase().replace(/\s+/g, "-")}`}>{item.severity}</span>
+                    <div style={{ fontWeight: 600, marginTop: 4 }}>{item.title}</div>
+                    <div className="meta">{item.detail}</div>
+                  </div>
+                  <button className="secondary" onClick={() => navigate(item.href)}>{item.actionLabel}</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="panel">
+          <h3>Department breakdown</h3>
+          {summary.departmentBreakdown.length === 0 ? (
+            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Visible to HR roles with directory access.</p>
+          ) : (
+            <div className="department-bars">
+              {summary.departmentBreakdown.map((row) => {
+                const max = Math.max(...summary.departmentBreakdown.map((r) => r.activeCount), 1);
+                return (
+                  <div className="department-bar" key={row.department}>
+                    <div className="bar-label"><span>{row.department}</span><span>{row.activeCount}</span></div>
+                    <div className="bar-track"><div className="bar-fill" style={{ width: `${(row.activeCount / max) * 100}%` }} /></div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="section-heading">
+        <h2>Next 7 days</h2>
+      </div>
+      <div className="panel" style={{ marginBottom: 8 }}>
+        {!summary.canViewAvailability ? (
+          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Leave access is required to view team availability.</p>
+        ) : summary.upcomingLeave.length === 0 ? (
+          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Everyone in scope is available this week.</p>
+        ) : (
+          <div className="activity-list">
+            {summary.upcomingLeave.map((item, index) => (
+              <div className="activity-row" key={index}>
+                <span><span className="actor">{item.employeeName}</span> · {item.leaveTypeName}</span>
+                <span>{new Date(item.startDate).toLocaleDateString()} – {new Date(item.endDate).toLocaleDateString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="section-heading">
+        <h2>Recent activity</h2>
+        <span className="muted">Last synchronized {new Date(summary.lastSynchronizedAt).toLocaleTimeString()}</span>
+      </div>
+      <div className="panel">
+        {!summary.canViewActivity ? (
+          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Audit access is required to view recent activity.</p>
+        ) : summary.recentActivity.length === 0 ? (
+          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No activity recorded yet.</p>
+        ) : (
+          <div className="activity-list">
+            {summary.recentActivity.map((row, index) => (
+              <div className="activity-row" key={index}>
+                <span><span className="actor">{row.actor}</span> · {row.action.replace(/_/g, " ").toLowerCase()} · {row.entity}</span>
+                <time>{new Date(row.createdAt).toLocaleString()}</time>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   );
-}
-
-function SkeletonDashboard() {
-  return <div className="kpi-grid">{Array.from({ length: 8 }, (_, index) => <div className="skeleton" key={index} />)}</div>;
-}
-
-function Empty({ text }: { text: string }) {
-  return <div className="empty">{text}</div>;
 }

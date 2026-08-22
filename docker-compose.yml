@@ -1,4 +1,20 @@
 services:
+  dayflow-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: dayflow
+      POSTGRES_USER: dayflow
+      POSTGRES_PASSWORD: dayflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - dayflow-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dayflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   dayflow-api:
     image: maven:3.9.11-eclipse-temurin-21
     working_dir: /app
@@ -9,10 +25,17 @@ services:
     ports:
       - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:h2:file:/app/data/dayflow-dev;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;AUTO_SERVER=TRUE
+      SPRING_DATASOURCE_URL: jdbc:postgresql://dayflow-db:5432/dayflow
+      SPRING_DATASOURCE_USERNAME: dayflow
+      SPRING_DATASOURCE_PASSWORD: dayflow
       DAYFLOW_CORS_ORIGIN: http://localhost:5173
+      DAYFLOW_SEED_DEMO_DATA: "true"
+    depends_on:
+      dayflow-db:
+        condition: service_healthy
+
   dayflow-web:
-    image: node:26
+    image: node:22
     working_dir: /app
     volumes:
       - ./frontend:/app
@@ -23,5 +46,7 @@ services:
       VITE_API_BASE: http://localhost:8080
     depends_on:
       - dayflow-api
+
 volumes:
+  dayflow-db-data:
   dayflow-m2:
