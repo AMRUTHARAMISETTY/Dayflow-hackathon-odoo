@@ -65,9 +65,9 @@ class InvitationRepository {
   Optional<PendingInvitation> findByTokenHash(String tokenHash) {
     try {
       return Optional.of(jdbc.queryForObject("""
-          select id, email, role_id, r.name role_name, employee_id, expires_at, status
+          select i.id, i.email, i.role_id, r.name role_name, i.employee_id, i.expires_at, i.status
           from invitations i join roles r on r.id = i.role_id
-          where token_hash = ?
+          where i.token_hash = ?
           """, (rs, rowNum) -> new PendingInvitation(rs.getLong("id"), rs.getString("email"), rs.getLong("role_id"),
           rs.getString("role_name"), (Long) rs.getObject("employee_id"),
           rs.getTimestamp("expires_at").toLocalDateTime(), rs.getString("status")), tokenHash));

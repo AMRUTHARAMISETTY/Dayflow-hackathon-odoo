@@ -9,6 +9,9 @@ import com.dayflow.api.employee.Employee;
 import com.dayflow.api.employee.EmployeeRepository;
 import com.dayflow.api.leave.LeaveRequest;
 import com.dayflow.api.leave.LeaveRequestRepository;
+import com.dayflow.api.payroll.PayrollAnomalyRepository;
+import com.dayflow.api.payroll.PayrollRun;
+import com.dayflow.api.payroll.PayrollRunRepository;
 import com.dayflow.api.security.CurrentUser;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -18,10 +21,10 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 
 /**
- * Phase 1 + 2 are built (auth, directory, audit, attendance, leave, notifications). The
- * remaining KPI cards from spec section 4.2 (open tickets, onboarding progress, payroll
- * exceptions) are rendered with `available=false` and a note pointing at the phase that builds
- * them, rather than being faked — see spec section 22 ("meaningful empty states").
+ * Phases 1, 2 and 4 are built (auth, directory, audit, attendance, leave, notifications,
+ * payroll). The remaining KPI cards from spec section 4.2 (open tickets, onboarding progress)
+ * are rendered with `available=false` and a note pointing at the phase that builds them, rather
+ * than being faked — see spec section 22 ("meaningful empty states").
  */
 @Service
 public class DashboardService {
@@ -30,15 +33,20 @@ public class DashboardService {
   private final AttendanceService attendanceService;
   private final LeaveRequestRepository leaveRequestRepository;
   private final AttendanceCorrectionRepository attendanceCorrectionRepository;
+  private final PayrollAnomalyRepository payrollAnomalyRepository;
+  private final PayrollRunRepository payrollRunRepository;
 
   public DashboardService(EmployeeRepository employeeRepository, AuditRepository auditRepository,
       AttendanceService attendanceService, LeaveRequestRepository leaveRequestRepository,
-      AttendanceCorrectionRepository attendanceCorrectionRepository) {
+      AttendanceCorrectionRepository attendanceCorrectionRepository, PayrollAnomalyRepository payrollAnomalyRepository,
+      PayrollRunRepository payrollRunRepository) {
     this.employeeRepository = employeeRepository;
     this.auditRepository = auditRepository;
     this.attendanceService = attendanceService;
     this.leaveRequestRepository = leaveRequestRepository;
     this.attendanceCorrectionRepository = attendanceCorrectionRepository;
+    this.payrollAnomalyRepository = payrollAnomalyRepository;
+    this.payrollRunRepository = payrollRunRepository;
   }
 
   public DashboardSummary summary(CurrentUser actor) {
@@ -82,7 +90,13 @@ public class DashboardService {
     kpis.add(pendingApprovalsKpi(actor));
     kpis.add(unavailable("openTickets", "Open HR tickets", "Available once HR Help Desk ships (Phase 5)"));
     kpis.add(unavailable("onboardingProgress", "Onboarding progress", "Available once onboarding automation ships (Phase 3)"));
-    kpis.add(unavailable("payrollExceptions", "Payroll exceptions", "Available once Payroll ships (Phase 4)"));
+    if (actor.has("payroll:read")) {
+      int openExceptions = payrollAnomalyRepository.countAllOpenActionable();
+      kpis.add(new KpiCard("payrollExceptions", "Payroll exceptions", (long) openExceptions, true,
+          openExceptions > 0 ? "Blocks publication until resolved" : "All clear", "/payroll"));
+    } else {
+      kpis.add(unavailable("payrollExceptions", "Payroll exceptions", "Visible to Payroll Officer and HR Admin roles"));
+    }
 
     List<DepartmentCount> departmentBreakdown = broadView
         ? employeeRepository.departmentBreakdown().stream().map(row -> new DepartmentCount((String) row[0], (Long) row[1])).toList()
@@ -97,6 +111,9 @@ public class DashboardService {
     }
     if (actor.has("attendance:approve_correction")) {
       needsAttention.addAll(pendingCorrectionCountItems(actor));
+    }
+    if (actor.has("payroll:approve")) {
+      needsAttention.addAll(payrollRunRepository.findByStatus("UNDER_REVIEW").stream().map(this::toAttentionItem).toList());
     }
 
     List<RecentActivityItem> recentActivity = canViewActivity
@@ -188,6 +205,12 @@ public class DashboardService {
 
   private UpcomingLeaveItem toUpcomingLeaveItem(LeaveRequest request) {
     return new UpcomingLeaveItem(request.employeeName(), request.leaveTypeName(), request.startDate().toString(), request.endDate().toString());
+  }
+
+  private AttentionItem toAttentionItem(PayrollRun run) {
+    return new AttentionItem("Due Today", "Payroll awaiting approval",
+        "The " + run.periodMonth() + " payroll run is under review (" + run.employeeCount() + " employees, "
+            + run.totalNet() + " total net pay).", "Review", "/payroll", "PayrollRun", run.id());
   }
 
   private KpiCard unavailable(String key, String label, String note) {

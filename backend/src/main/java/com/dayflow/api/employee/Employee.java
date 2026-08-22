@@ -20,5 +20,7 @@ public record Employee(
     LocalDate joiningDate,
     LocalDateTime createdAt,
     LocalDateTime updatedAt,
-    boolean hasLoginAccount) {
+    boolean hasLoginAccount,
+    boolean bankVerified,
+    boolean taxIdVerified) {
 }

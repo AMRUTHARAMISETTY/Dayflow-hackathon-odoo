@@ -25,7 +25,7 @@ describe("LoginPage", () => {
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "Dayflow@123" } });
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
-    await waitFor(() => expect(loginSpy).toHaveBeenCalledWith("admin@dayflow.test", "Dayflow@123"));
+    await waitFor(() => expect(loginSpy).toHaveBeenCalledWith("admin@dayflow.test", "Dayflow@123", false));
   });
 
   it("shows the server error message on failed login", async () => {

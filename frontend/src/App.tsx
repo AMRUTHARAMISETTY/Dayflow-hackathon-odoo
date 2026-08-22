@@ -5,22 +5,30 @@ import { PermissionDenied } from "./components/StateViews";
 import { useAuth } from "./lib/auth-context";
 import { AcceptInvitationPage } from "./pages/AcceptInvitationPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
+import { AssistantPage } from "./pages/AssistantPage";
 import { AttendancePage } from "./pages/AttendancePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import { AutomationRulesPage } from "./pages/AutomationRulesPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { EmailPage } from "./pages/EmailPage";
 import { EmployeeProfilePage } from "./pages/EmployeeProfilePage";
 import { EmployeesPage } from "./pages/EmployeesPage";
+import { InsightsPage } from "./pages/InsightsPage";
 import { InvitationsPage } from "./pages/InvitationsPage";
 import { LeavePage } from "./pages/LeavePage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OrgChartPage } from "./pages/OrgChartPage";
+import { PayrollPage } from "./pages/PayrollPage";
+import { PerformancePage } from "./pages/PerformancePage";
+import { PoliciesPage } from "./pages/PoliciesPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { RolesPage } from "./pages/RolesPage";
+import { SecurityDevicesPage } from "./pages/SecurityDevicesPage";
 import { TasksPage } from "./pages/TasksPage";
 import { TeamsPage } from "./pages/TeamsPage";
+import { TicketsPage } from "./pages/TicketsPage";
 import { WorkloadPage } from "./pages/WorkloadPage";
 
 function RequirePermission({ anyOf, children }: { anyOf: string[]; children: ReactNode }) {
@@ -63,12 +71,20 @@ export function App() {
         <Route path="projects" element={<RequirePermission anyOf={["project:read"]}><ProjectsPage /></RequirePermission>} />
         <Route path="tasks" element={<RequirePermission anyOf={["task:read"]}><TasksPage /></RequirePermission>} />
         <Route path="workload" element={<RequirePermission anyOf={["workload:read"]}><WorkloadPage /></RequirePermission>} />
+        <Route path="payroll" element={<RequirePermission anyOf={["payroll:read", "payroll:read:own"]}><PayrollPage /></RequirePermission>} />
         <Route path="approvals" element={<RequirePermission anyOf={["leave:approve", "attendance:approve_correction", "employee:write"]}><ApprovalsPage /></RequirePermission>} />
         <Route path="automation" element={<RequirePermission anyOf={["automation:read"]}><AutomationRulesPage /></RequirePermission>} />
         <Route path="notifications" element={<RequirePermission anyOf={["notification:read"]}><NotificationsPage /></RequirePermission>} />
         <Route path="audit-logs" element={<RequirePermission anyOf={["audit:read"]}><AuditLogPage /></RequirePermission>} />
         <Route path="roles" element={<RequirePermission anyOf={["role:read"]}><RolesPage /></RequirePermission>} />
         <Route path="invitations" element={<RequirePermission anyOf={["invitation:read"]}><InvitationsPage /></RequirePermission>} />
+        <Route path="email" element={<RequirePermission anyOf={["email:read", "email:send"]}><EmailPage /></RequirePermission>} />
+        <Route path="tickets" element={<RequirePermission anyOf={["ticket:read", "ticket:read:own"]}><TicketsPage /></RequirePermission>} />
+        <Route path="policies" element={<RequirePermission anyOf={["policy:read"]}><PoliciesPage /></RequirePermission>} />
+        <Route path="assistant" element={<RequirePermission anyOf={["assistant:use"]}><AssistantPage /></RequirePermission>} />
+        <Route path="performance" element={<RequirePermission anyOf={["performance:read:own", "performance:read", "performance:manage", "performance:manage:reports"]}><PerformancePage /></RequirePermission>} />
+        <Route path="insights" element={<RequirePermission anyOf={["insights:read"]}><InsightsPage /></RequirePermission>} />
+        <Route path="security" element={<SecurityDevicesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
 

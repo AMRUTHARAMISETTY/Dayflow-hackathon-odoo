@@ -1,6 +1,6 @@
 import {
-  Bell, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, ClipboardList, FileText, Gauge, KeyRound,
-  LayoutDashboard, LifeBuoy, Mail, Megaphone, Network, ScrollText, Settings, ShieldCheck, TrendingUp, UserPlus,
+  Bell, BookOpen, Bot, BrainCircuit, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, ClipboardList, FileText, Fingerprint, Gauge, KeyRound,
+  LayoutDashboard, LifeBuoy, Mail, Network, Send, ScrollText, Settings, Target, TrendingUp, UserPlus,
   Users, Wallet, Workflow, type LucideIcon
 } from "lucide-react";
 
@@ -22,7 +22,8 @@ export const navGroups: NavGroup[] = [
       { label: "Overview", path: "/", icon: LayoutDashboard, permission: "dashboard:read", built: true },
       { label: "My Tasks", path: "/tasks", icon: CheckCircle2, permission: "task:read", built: true },
       { label: "Calendar", path: "/calendar", icon: CalendarDays, built: false, phaseNote: "Phase 3" },
-      { label: "Notifications", path: "/notifications", icon: Bell, permission: "notification:read", built: true }
+      { label: "Notifications", path: "/notifications", icon: Bell, permission: "notification:read", built: true },
+      { label: "Security and Devices", path: "/security", icon: Fingerprint, built: true }
     ]
   },
   {
@@ -50,21 +51,28 @@ export const navGroups: NavGroup[] = [
   {
     label: "Finance",
     items: [
-      { label: "Payroll", path: "/payroll", icon: Wallet, built: false, phaseNote: "Phase 4" },
-      { label: "Payroll Exceptions", path: "/payroll/exceptions", icon: ShieldCheck, built: false, phaseNote: "Phase 4" }
+      { label: "Payroll", path: "/payroll", icon: Wallet, permission: "payroll:read:own", built: true }
+    ]
+  },
+  {
+    label: "Communication",
+    items: [
+      { label: "Email", path: "/email", icon: Send, permission: "email:read", built: true },
+      { label: "HR Help Desk", path: "/tickets", icon: LifeBuoy, permission: "ticket:read:own", built: true },
+      { label: "Policies", path: "/policies", icon: BookOpen, permission: "policy:read", built: true },
+      { label: "Assistant", path: "/assistant", icon: Bot, permission: "assistant:use", built: true }
     ]
   },
   {
     label: "Employee Experience",
     items: [
-      { label: "HR Help Desk", path: "/tickets", icon: LifeBuoy, built: false, phaseNote: "Phase 5" },
-      { label: "Announcements", path: "/announcements", icon: Megaphone, built: false, phaseNote: "Phase 5" },
-      { label: "Performance", path: "/performance", icon: TrendingUp, built: false, phaseNote: "Phase 6" }
+      { label: "Performance", path: "/performance", icon: Target, permission: "performance:read:own", built: true }
     ]
   },
   {
     label: "Insights",
     items: [
+      { label: "Workforce Insights", path: "/insights", icon: BrainCircuit, permission: "insights:read", built: true },
       { label: "Audit Logs", path: "/audit-logs", icon: ScrollText, permission: "audit:read", built: true },
       { label: "Reports", path: "/reports", icon: BriefcaseBusiness, built: false, phaseNote: "Phase 7" }
     ]

@@ -202,6 +202,9 @@ export function AppShell() {
                   <button role="menuitem" onClick={() => { setProfileOpen(false); notify("info", "Help center arrives in a later phase."); }}>
                     <ShieldQuestion size={14} style={{ marginRight: 8 }} /> Help
                   </button>
+                  <button role="menuitem" onClick={() => { setProfileOpen(false); navigate("/security"); }}>
+                    <ShieldQuestion size={14} style={{ marginRight: 8 }} /> Security and devices
+                  </button>
                   <div className="divider" />
                   <button role="menuitem" onClick={() => logout()}>
                     <LogOut size={14} style={{ marginRight: 8 }} /> Sign out

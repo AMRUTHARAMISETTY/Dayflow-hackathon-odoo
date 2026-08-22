@@ -21,7 +21,8 @@ public class EmployeeRepository {
       select e.id, e.employee_code, e.name, e.email, e.phone, e.department_id, d.name department_name,
              e.designation, e.manager_id, m.name manager_name, e.location, e.employment_type, e.status,
              e.joining_date, e.created_at, e.updated_at,
-             exists(select 1 from users u where u.employee_id = e.id) has_login_account
+             exists(select 1 from users u where u.employee_id = e.id) has_login_account,
+             e.bank_verified, e.tax_id_verified
       from employees e
       left join departments d on d.id = e.department_id
       left join employees m on m.id = e.manager_id
@@ -269,7 +270,13 @@ public class EmployeeRepository {
         joiningDate == null ? null : joiningDate.toLocalDate(),
         createdAt == null ? null : createdAt.toLocalDateTime(),
         updatedAt == null ? null : updatedAt.toLocalDateTime(),
-        rs.getBoolean("has_login_account"));
+        rs.getBoolean("has_login_account"),
+        rs.getBoolean("bank_verified"),
+        rs.getBoolean("tax_id_verified"));
+  }
+
+  public void setPayrollVerificationFlags(long id, boolean bankVerified, boolean taxIdVerified) {
+    jdbc.update("update employees set bank_verified = ?, tax_id_verified = ? where id = ?", bankVerified, taxIdVerified, id);
   }
 
   public Employee requireById(long id) {

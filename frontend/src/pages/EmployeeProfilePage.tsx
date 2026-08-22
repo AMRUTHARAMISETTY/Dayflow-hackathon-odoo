@@ -2,23 +2,21 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Archive, Mail, Pencil, RefreshCcw, UserX } from "lucide-react";
 import {
-  ApiError, archiveEmployee, createInvitation, fetchEmployee, fetchEmployeeHistory, fetchEmployees,
-  fetchLeaveBalances, fetchLeaveRequests, reactivateEmployee, suspendEmployee, updateEmployeeBasic, updateEmployeeJobDetails
+  ApiError, archiveEmployee, createInvitation, createSalaryStructure, fetchEmployee, fetchEmployeeHistory,
+  fetchEmployees, fetchLeaveBalances, fetchLeaveRequests, fetchSalaryStructures, fetchSlipsForEmployee,
+  reactivateEmployee, suspendEmployee, updateEmployeeBasic, updateEmployeeJobDetails, updatePayrollVerification
 } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
 import { useToast } from "../lib/toast-context";
-import { ErrorState, LoadingSkeleton, PermissionDenied } from "../components/StateViews";
+import { EmptyState, ErrorState, LoadingSkeleton, PermissionDenied } from "../components/StateViews";
 import { ReasonDialog } from "../components/ReasonDialog";
 import { StatusPill } from "./EmployeesPage";
 import { MyAttendanceView } from "./AttendancePage";
-import type { Employee, EmployeeJobHistoryEntry, LeaveBalance, LeaveRequest } from "../lib/types";
+import type { Employee, EmployeeJobHistoryEntry, LeaveBalance, LeaveRequest, PayrollLine, SalaryStructure } from "../lib/types";
 
 const LOCKED_TABS = [
-  { key: "payroll", label: "Payroll", phase: "Phase 4" },
   { key: "documents", label: "Documents", phase: "Phase 4" },
-  { key: "performance", label: "Performance", phase: "Phase 6" },
   { key: "skills", label: "Skills & Training", phase: "Phase 6" },
-  { key: "communication", label: "Communication", phase: "Phase 5" },
   { key: "assets", label: "Assets", phase: "Phase 4" }
 ];
 
@@ -34,7 +32,7 @@ export function EmployeeProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
-  const [tab, setTab] = useState<"overview" | "personal" | "employment" | "history" | "attendance" | "leave">("overview");
+  const [tab, setTab] = useState<"overview" | "personal" | "employment" | "history" | "attendance" | "leave" | "payroll">("overview");
   const [dialog, setDialog] = useState<null | "suspend" | "reactivate" | "archive">(null);
   const [editingBasic, setEditingBasic] = useState(false);
   const [editingJob, setEditingJob] = useState(false);
@@ -127,6 +125,9 @@ export function EmployeeProfilePage() {
         <button role="tab" className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>History</button>
         <button role="tab" className={tab === "attendance" ? "active" : ""} onClick={() => setTab("attendance")}>Attendance</button>
         <button role="tab" className={tab === "leave" ? "active" : ""} onClick={() => setTab("leave")}>Leave</button>
+        {(can("salary:read") || can("payroll:read") || can("payroll:read:own")) && (
+          <button role="tab" className={tab === "payroll" ? "active" : ""} onClick={() => setTab("payroll")}>Payroll</button>
+        )}
         {LOCKED_TABS.map((locked) => (
           <button key={locked.key} className="locked" disabled title={`Available ${locked.phase}`}>{locked.label}</button>
         ))}
@@ -201,6 +202,7 @@ export function EmployeeProfilePage() {
 
       {tab === "attendance" && <MyAttendanceView employeeId={employee.id} />}
       {tab === "leave" && <EmployeeLeaveSummary employeeId={employee.id} />}
+      {tab === "payroll" && <EmployeePayrollSummary employee={employee} />}
 
       {editingBasic && (
         <EditContactModal employee={employee} onClose={() => setEditingBasic(false)} onSaved={(next) => { setEmployee(next); setEditingBasic(false); notify("success", "Contact info updated."); }} />
@@ -270,6 +272,181 @@ function EmployeeLeaveSummary({ employeeId }: { employeeId: number }) {
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function EmployeePayrollSummary({ employee }: { employee: Employee }) {
+  const { can } = useAuth();
+  const notify = useToast();
+  const [structures, setStructures] = useState<SalaryStructure[] | null>(null);
+  const [slips, setSlips] = useState<PayrollLine[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showNewStructure, setShowNewStructure] = useState(false);
+  const [savingVerification, setSavingVerification] = useState(false);
+
+  const load = () => {
+    const requests: Promise<void>[] = [];
+    if (can("salary:read")) {
+      requests.push(fetchSalaryStructures(employee.id).then(setStructures));
+    }
+    if (can("payroll:read") || can("payroll:read:own")) {
+      requests.push(fetchSlipsForEmployee(employee.id).then(setSlips).catch(() => setSlips([])));
+    }
+    Promise.all(requests).catch((err) => setError(err instanceof Error ? err.message : "Could not load payroll data."));
+  };
+  useEffect(load, [employee.id]);
+
+  if (error) return <ErrorState message={error} onRetry={load} />;
+
+  const current = structures?.find((s) => s.status === "ACTIVE");
+
+  return (
+    <div className="grid-two">
+      {can("salary:read") && (
+        <div className="panel">
+          <div className="toolbar" style={{ marginBottom: 10 }}>
+            <h3 style={{ margin: 0 }}>Salary structure</h3>
+            <div className="spacer" />
+            {can("salary:write") && <button className="secondary" onClick={() => setShowNewStructure(true)}>Revise</button>}
+          </div>
+          {!structures ? <LoadingSkeleton rows={2} /> : current ? (
+            <div className="profile-meta">
+              <div><span>Basic</span>{current.basicMonthly}</div>
+              <div><span>HRA</span>{current.hraMonthly}</div>
+              <div><span>Allowances</span>{current.allowancesMonthly}</div>
+              <div><span>Gross monthly</span>{current.grossMonthly}</div>
+              <div><span>Effective from</span>{new Date(current.effectiveFrom).toLocaleDateString()}</div>
+            </div>
+          ) : <EmptyState title="No salary structure configured" description="Payroll can't be calculated for this employee until one is added." />}
+
+          <div className="toolbar" style={{ marginTop: 16, marginBottom: 6 }}>
+            <strong style={{ fontSize: 13 }}>Bank &amp; tax verification</strong>
+          </div>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <input type="checkbox" checked={employee.bankVerified} disabled={!can("salary:write") || savingVerification} onChange={async (event) => {
+                setSavingVerification(true);
+                try {
+                  await updatePayrollVerification(employee.id, event.target.checked, employee.taxIdVerified);
+                  notify("success", "Bank verification updated.");
+                } catch (err) {
+                  notify("error", err instanceof Error ? err.message : "Could not update verification.");
+                } finally {
+                  setSavingVerification(false);
+                }
+              }} />
+              Bank verified
+            </label>
+            <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <input type="checkbox" checked={employee.taxIdVerified} disabled={!can("salary:write") || savingVerification} onChange={async (event) => {
+                setSavingVerification(true);
+                try {
+                  await updatePayrollVerification(employee.id, employee.bankVerified, event.target.checked);
+                  notify("success", "Tax verification updated.");
+                } catch (err) {
+                  notify("error", err instanceof Error ? err.message : "Could not update verification.");
+                } finally {
+                  setSavingVerification(false);
+                }
+              }} />
+              Tax ID verified
+            </label>
+          </div>
+
+          {structures && structures.length > 1 && (
+            <>
+              <div className="toolbar" style={{ marginTop: 16, marginBottom: 6 }}>
+                <strong style={{ fontSize: 13 }}>History</strong>
+              </div>
+              <div className="timeline">
+                {structures.filter((s) => s.status !== "ACTIVE").map((s) => (
+                  <div className="timeline-item" key={s.id}>
+                    <div className="timeline-dot" />
+                    <div className="timeline-body">
+                      <div className="change-type">{s.grossMonthly} gross/mo</div>
+                      <div className="when">{new Date(s.effectiveFrom).toLocaleDateString()} – {s.effectiveTo ? new Date(s.effectiveTo).toLocaleDateString() : "—"}</div>
+                      {s.reason && <div className="reason">{s.reason}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="panel">
+        <h3>Salary slips</h3>
+        {!slips ? <LoadingSkeleton rows={2} /> : slips.length === 0 ? (
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No published slips yet.</p>
+        ) : (
+          <div className="activity-list">
+            {slips.map((slip) => (
+              <div className="activity-row" key={slip.id}>
+                <span>Net pay {slip.netPay}</span>
+                <span>Gross {slip.grossEarnings}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showNewStructure && (
+        <NewSalaryStructureModal employeeId={employee.id} onClose={() => setShowNewStructure(false)}
+          onSaved={() => { setShowNewStructure(false); notify("success", "Salary structure updated."); load(); }} />
+      )}
+    </div>
+  );
+}
+
+function NewSalaryStructureModal({ employeeId, onClose, onSaved }: { employeeId: number; onClose: () => void; onSaved: () => void }) {
+  const [effectiveFrom, setEffectiveFrom] = useState(new Date().toISOString().slice(0, 10));
+  const [basic, setBasic] = useState("");
+  const [hra, setHra] = useState("");
+  const [allowances, setAllowances] = useState("");
+  const [deductions, setDeductions] = useState("");
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <h2>Revise salary structure</h2>
+        <p className="modal-sub">Supersedes the current active structure as of the effective date. Requires a reason.</p>
+        <div className="form-grid">
+          <label className="field">Effective from<input type="date" value={effectiveFrom} onChange={(event) => setEffectiveFrom(event.target.value)} /></label>
+          <label className="field">Basic monthly<input type="number" min={0} value={basic} onChange={(event) => setBasic(event.target.value)} /></label>
+          <label className="field">HRA monthly<input type="number" min={0} value={hra} onChange={(event) => setHra(event.target.value)} /></label>
+          <label className="field">Allowances monthly<input type="number" min={0} value={allowances} onChange={(event) => setAllowances(event.target.value)} /></label>
+          <label className="field">Recurring deductions monthly<input type="number" min={0} value={deductions} onChange={(event) => setDeductions(event.target.value)} /></label>
+        </div>
+        <label className="field" style={{ marginTop: 12 }}>Reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+        {error && <p className="form-error">{error}</p>}
+        <div className="modal-actions">
+          <button className="secondary" onClick={onClose} disabled={submitting}>Cancel</button>
+          <button className="primary" disabled={submitting || !basic || !reason.trim()} onClick={async () => {
+            setSubmitting(true);
+            setError(null);
+            try {
+              await createSalaryStructure(employeeId, {
+                effectiveFrom,
+                basicMonthly: Number(basic),
+                hraMonthly: hra ? Number(hra) : undefined,
+                allowancesMonthly: allowances ? Number(allowances) : undefined,
+                recurringDeductionsMonthly: deductions ? Number(deductions) : undefined,
+                reason: reason.trim()
+              });
+              onSaved();
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Could not save salary structure.");
+            } finally {
+              setSubmitting(false);
+            }
+          }}>{submitting ? "Saving…" : "Save"}</button>
+        </div>
       </div>
     </div>
   );

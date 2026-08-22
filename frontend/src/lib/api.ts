@@ -1,9 +1,14 @@
 import { storage, cache } from "./storage";
 import type {
-  AcceptInvitationLookup, AppNotification, AttendanceCorrection, AttendanceDayView, AttendanceSummary,
+  AcceptInvitationLookup, AppNotification, AssignableStaff, AssistantInteraction, AttendanceCorrection, AttendanceDayView, AttendanceSummary,
+  AttritionRiskEntry,
   AuditLogEntry, AutomationExecution, AutomationRule, CreatedInvitation, Department, DashboardSummary, Employee,
-  EmployeeJobHistoryEntry, InvitationView, LeaveBalance, LeaveRequest, LeaveType, PageResponse, Project,
-  ProjectMilestone, Role, Shift, TaskAssignee, TaskItem, Team, TeamMember, TokenPairResponse, UserView, WorkloadRow
+  AuthMessage, AuthSession, EmailDelivery, EmailMessage, EmailTemplate,
+  EmployeeJobHistoryEntry, Goal, HeadcountPoint, HrTicket, HrTicketMessage, InvitationView, LeaveBalance, LeaveRequest, LeaveType,
+  PageResponse, PayrollAnomaly, PerformanceReview, Policy,
+  PayrollLine, PayrollRun, PasskeyOptionsResponse, PasskeyView, Project, ProjectMilestone, RecipientPreview,
+  RecipientSelector, Role, SalaryStructure,
+  SecurityEvent, Shift, TaskAssignee, TaskItem, Team, TeamMember, TokenPairResponse, UserView, WorkloadRow
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
@@ -136,8 +141,8 @@ export async function cachedApi<T>(cacheKey: string, path: string, options: Requ
 
 // ---- Auth ----
 
-export async function login(email: string, password: string) {
-  const pair = await api<TokenPairResponse>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+export async function login(identifier: string, password: string, rememberDevice = false) {
+  const pair = await api<TokenPairResponse>("/api/auth/login", { method: "POST", body: JSON.stringify({ identifier, password, rememberDevice }) });
   persistSession(pair);
   return pair.user;
 }
@@ -162,6 +167,57 @@ export async function logout() {
 
 export function me() {
   return api<UserView>("/api/auth/me");
+}
+
+export function requestEmployeeActivation(employeeId: string, email: string) {
+  return api<AuthMessage>("/api/auth/employee/activate", { method: "POST", body: JSON.stringify({ employeeId, email }) });
+}
+
+export function forgotPassword(identifier: string) {
+  return api<AuthMessage>("/api/auth/password/forgot", { method: "POST", body: JSON.stringify({ identifier }) });
+}
+
+export function resetPassword(token: string, newPassword: string) {
+  return api<AuthMessage>("/api/auth/password/reset", { method: "POST", body: JSON.stringify({ token, newPassword }) });
+}
+
+export function passkeyRegisterOptions() {
+  return api<PasskeyOptionsResponse>("/api/auth/passkeys/register/options", { method: "POST" });
+}
+
+export function passkeyRegisterVerify(payload: { challenge: string; credentialId: string; publicKey: string; deviceName?: string; transports?: string[] }) {
+  return api<PasskeyView>("/api/auth/passkeys/register/verify", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function passkeyLoginOptions(identifier?: string) {
+  return api<PasskeyOptionsResponse>("/api/auth/passkeys/login/options", { method: "POST", body: JSON.stringify({ identifier }) });
+}
+
+export async function passkeyLoginVerify(challenge: string, credentialId: string) {
+  const pair = await api<TokenPairResponse>("/api/auth/passkeys/login/verify", { method: "POST", body: JSON.stringify({ challenge, credentialId }) });
+  persistSession(pair);
+  return pair.user;
+}
+
+export function fetchAuthSessions() {
+  const refreshToken = getRefreshToken();
+  return api<AuthSession[]>("/api/auth/sessions", { headers: refreshToken ? { "X-Refresh-Token": refreshToken } : undefined });
+}
+
+export function revokeAuthSession(sessionId: number) {
+  return api<void>(`/api/auth/sessions/${sessionId}`, { method: "DELETE" });
+}
+
+export function fetchPasskeys() {
+  return api<PasskeyView[]>("/api/auth/passkeys");
+}
+
+export function deletePasskey(credentialId: string) {
+  return api<void>(`/api/auth/passkeys/${encodeURIComponent(credentialId)}`, { method: "DELETE" });
+}
+
+export function fetchSecurityEvents() {
+  return api<SecurityEvent[]>("/api/auth/security-events");
 }
 
 // ---- Dashboard ----
@@ -417,6 +473,77 @@ export function runAutomationRule(ruleId: number, dryRun: boolean) {
   return api<AutomationExecution>(`/api/automation-rules/${ruleId}/run${toQueryString({ dryRun })}`, { method: "POST" });
 }
 
+// ---- Payroll ----
+
+export function fetchSalaryStructures(employeeId: number) {
+  return api<SalaryStructure[]>(`/api/employees/${employeeId}/salary/structures`);
+}
+
+export type CreateSalaryStructurePayload = {
+  effectiveFrom: string; basicMonthly: number; hraMonthly?: number; allowancesMonthly?: number;
+  recurringDeductionsMonthly?: number; reason: string;
+};
+
+export function createSalaryStructure(employeeId: number, payload: CreateSalaryStructurePayload) {
+  return api<SalaryStructure>(`/api/employees/${employeeId}/salary/structures`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function updatePayrollVerification(employeeId: number, bankVerified: boolean, taxIdVerified: boolean) {
+  return api<Employee>(`/api/employees/${employeeId}/salary/verification`, { method: "PUT", body: JSON.stringify({ bankVerified, taxIdVerified }) });
+}
+
+export function fetchPayrollRuns(status?: string, page = 0, size = 20) {
+  return api<PageResponse<PayrollRun>>(`/api/payroll/runs${toQueryString({ status, page, size })}`);
+}
+
+export function createPayrollRun(periodMonth: string) {
+  return api<PayrollRun>("/api/payroll/runs", { method: "POST", body: JSON.stringify({ periodMonth }) });
+}
+
+export function fetchPayrollRun(id: number) {
+  return api<PayrollRun>(`/api/payroll/runs/${id}`);
+}
+
+export function fetchPayrollLines(id: number) {
+  return api<PayrollLine[]>(`/api/payroll/runs/${id}/lines`);
+}
+
+export function fetchPayrollAnomalies(id: number) {
+  return api<PayrollAnomaly[]>(`/api/payroll/runs/${id}/anomalies`);
+}
+
+export function calculatePayroll(id: number) {
+  return api<PayrollRun>(`/api/payroll/runs/${id}/calculate`, { method: "POST" });
+}
+
+export function submitPayrollForReview(id: number) {
+  return api<PayrollRun>(`/api/payroll/runs/${id}/submit-for-review`, { method: "POST" });
+}
+
+export function approvePayroll(id: number, reason: string) {
+  return api<PayrollRun>(`/api/payroll/runs/${id}/approve`, { method: "POST", body: JSON.stringify({ reason }) });
+}
+
+export function publishPayroll(id: number) {
+  return api<PayrollRun>(`/api/payroll/runs/${id}/publish`, { method: "POST" });
+}
+
+export function markPayrollPaid(id: number) {
+  return api<PayrollRun>(`/api/payroll/runs/${id}/mark-paid`, { method: "POST" });
+}
+
+export function resolvePayrollAnomaly(id: number, status: "ACKNOWLEDGED" | "RESOLVED", resolutionNote: string) {
+  return api<PayrollAnomaly>(`/api/payroll/anomalies/${id}/resolve`, { method: "POST", body: JSON.stringify({ status, resolutionNote }) });
+}
+
+export function fetchMySlips() {
+  return api<PayrollLine[]>("/api/payroll/my-slips");
+}
+
+export function fetchSlipsForEmployee(employeeId: number) {
+  return api<PayrollLine[]>(`/api/payroll/employees/${employeeId}/slips`);
+}
+
 // ---- Teams, projects, tasks, workload ----
 
 export type TeamSearchParams = { q?: string; type?: string; departmentId?: number; page?: number; size?: number };
@@ -485,4 +612,175 @@ export function assignTask(id: number, employeeId: number, role = "Owner", alloc
 
 export function fetchWorkload(params: { teamId?: number; from?: string; to?: string } = {}) {
   return api<WorkloadRow[]>(`/api/workload${toQueryString(params)}`);
+}
+
+// ---- Communication: Email ----
+
+export function fetchEmailTemplates() {
+  return api<EmailTemplate[]>("/api/email/templates");
+}
+
+export function createEmailTemplate(payload: { code: string; category: string; name: string; subject: string; body: string }) {
+  return api<EmailTemplate>("/api/email/templates", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export type ComposeEmailPayload = {
+  templateId?: number | null;
+  recipients: RecipientSelector;
+  subject: string;
+  body: string;
+  scheduledAt?: string | null;
+  bulkConfirmed: boolean;
+};
+
+export function previewEmail(payload: ComposeEmailPayload) {
+  return api<RecipientPreview>("/api/email/preview", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function sendEmail(payload: ComposeEmailPayload) {
+  return api<EmailMessage>("/api/email/messages", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: { "Idempotency-Key": crypto.randomUUID() }
+  });
+}
+
+export function sendTestEmail(payload: ComposeEmailPayload) {
+  return api<EmailMessage>("/api/email/messages/test", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function fetchEmailMessages(status?: string, page = 0, size = 20) {
+  return api<PageResponse<EmailMessage>>(`/api/email/messages${toQueryString({ status, page, size })}`);
+}
+
+export function fetchEmailMessage(id: number) {
+  return api<EmailMessage>(`/api/email/messages/${id}`);
+}
+
+export function fetchEmailDeliveries(id: number) {
+  return api<EmailDelivery[]>(`/api/email/messages/${id}/deliveries`);
+}
+
+// ---- Communication: HR Help Desk ----
+
+export type TicketSearchParams = { status?: string; category?: string; employeeId?: number; page?: number; size?: number };
+
+export function fetchTickets(params: TicketSearchParams = {}) {
+  return api<PageResponse<HrTicket>>(`/api/tickets${toQueryString(params)}`);
+}
+
+export function fetchTicket(id: number) {
+  return api<HrTicket>(`/api/tickets/${id}`);
+}
+
+export function fetchAssignableStaff() {
+  return api<AssignableStaff[]>("/api/tickets/assignable");
+}
+
+export function createTicket(payload: { category: string; subject: string; description: string; confidential: boolean }) {
+  return api<HrTicket>("/api/tickets", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function fetchTicketMessages(id: number) {
+  return api<HrTicketMessage[]>(`/api/tickets/${id}/messages`);
+}
+
+export function addTicketMessage(id: number, body: string, internalNote: boolean) {
+  return api<HrTicketMessage>(`/api/tickets/${id}/messages`, { method: "POST", body: JSON.stringify({ body, internalNote }) });
+}
+
+export function assignTicket(id: number, assignedToUserId: number) {
+  return api<HrTicket>(`/api/tickets/${id}/assign`, { method: "POST", body: JSON.stringify({ assignedToUserId }) });
+}
+
+export function updateTicketStatus(id: number, status: string) {
+  return api<HrTicket>(`/api/tickets/${id}/status`, { method: "POST", body: JSON.stringify({ status }) });
+}
+
+export function escalateTicket(id: number) {
+  return api<HrTicket>(`/api/tickets/${id}/escalate`, { method: "POST" });
+}
+
+export function rateTicket(id: number, rating: number) {
+  return api<HrTicket>(`/api/tickets/${id}/rate`, { method: "POST", body: JSON.stringify({ rating }) });
+}
+
+// ---- Communication: Policies ----
+
+export function fetchPolicies(category?: string, q?: string) {
+  return api<Policy[]>(`/api/policies${toQueryString({ category, q })}`);
+}
+
+export function fetchPolicy(id: number) {
+  return api<Policy>(`/api/policies/${id}`);
+}
+
+export type PolicyPayload = { title: string; category: string; body: string; effectiveDate: string };
+
+export function createPolicy(payload: PolicyPayload & { code: string }) {
+  return api<Policy>("/api/policies", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function updatePolicy(id: number, payload: PolicyPayload) {
+  return api<Policy>(`/api/policies/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+}
+
+export function archivePolicy(id: number) {
+  return api<Policy>(`/api/policies/${id}/archive`, { method: "POST" });
+}
+
+export function activatePolicy(id: number) {
+  return api<Policy>(`/api/policies/${id}/activate`, { method: "POST" });
+}
+
+// ---- Communication: Self-service assistant ----
+
+export function askAssistant(question: string) {
+  return api<AssistantInteraction>("/api/assistant/ask", { method: "POST", body: JSON.stringify({ question }) });
+}
+
+export function escalateToTicket(question: string, category: string, confidential: boolean) {
+  return api<AssistantInteraction>("/api/assistant/escalate", { method: "POST", body: JSON.stringify({ question, category, confidential }) });
+}
+
+export function fetchAssistantHistory() {
+  return api<AssistantInteraction[]>("/api/assistant/history");
+}
+
+// ---- Performance & workforce insights ----
+
+export function fetchGoals(employeeId: number) {
+  return api<Goal[]>(`/api/performance/employees/${employeeId}/goals`);
+}
+
+export function createGoal(payload: { employeeId: number; title: string; description?: string; category?: string; dueDate?: string }) {
+  return api<Goal>("/api/performance/goals", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function updateGoalProgress(id: number, progressPercent: number, status: string) {
+  return api<Goal>(`/api/performance/goals/${id}/progress`, { method: "POST", body: JSON.stringify({ progressPercent, status }) });
+}
+
+export function fetchReviews(employeeId: number) {
+  return api<PerformanceReview[]>(`/api/performance/employees/${employeeId}/reviews`);
+}
+
+export function startReview(employeeId: number, cycle: string) {
+  return api<PerformanceReview>("/api/performance/reviews", { method: "POST", body: JSON.stringify({ employeeId, cycle }) });
+}
+
+export function submitReview(id: number, payload: { rating: number; strengths?: string; improvements?: string; managerComments?: string }) {
+  return api<PerformanceReview>(`/api/performance/reviews/${id}/submit`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function acknowledgeReview(id: number) {
+  return api<PerformanceReview>(`/api/performance/reviews/${id}/acknowledge`, { method: "POST" });
+}
+
+export function fetchHeadcountTrend() {
+  return api<HeadcountPoint[]>("/api/insights/headcount-trend");
+}
+
+export function fetchAttritionRisk() {
+  return api<AttritionRiskEntry[]>("/api/insights/attrition-risk");
 }

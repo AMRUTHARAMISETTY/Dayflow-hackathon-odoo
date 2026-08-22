@@ -26,10 +26,15 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 /**
- * Seeds a compact five-person demo organization so the app is usable immediately after
- * `docker compose up`. Passwords are hashed with the real
+ * Seeds a demo organization (one person per role, plus one employee still mid-onboarding) so the
+ * app is usable immediately after `docker compose up`. Passwords are hashed with the real
  * PasswordEncoder at startup rather than baked into SQL, and the whole thing is a no-op once any
  * user account exists so it never runs twice against the same database.
+ *
+ * Note: hradmin@dayflow.test, hrofficer@dayflow.test and auditor@dayflow.test are relied on by
+ * name across the backend test suite (mine and other in-progress work in this repo) — please
+ * keep those three accounts and their emails stable, or update the referencing tests in the same
+ * change if they genuinely need to move.
  */
 @Component
 public class DemoDataSeeder implements CommandLineRunner {
@@ -88,17 +93,22 @@ public class DemoDataSeeder implements CommandLineRunner {
 
     long superAdminId = seedPerson("Amrutha Ramisetty", "admin@dayflow.test", administration,
         "Super Administrator", null, "Bengaluru", "Full-time", LocalDate.now().minusDays(400), "SUPER_ADMIN");
-    seedPerson("Priya Nair", "hr@dayflow.test", peopleOps, "HR Admin", null, "Bengaluru", "Full-time",
+    long hrAdminId = seedPerson("Priya Nair", "hradmin@dayflow.test", peopleOps, "HR Admin", null, "Bengaluru", "Full-time",
         LocalDate.now().minusDays(300), "HR_ADMIN");
+    long hrOfficerId = seedPerson("Karan Bose", "hrofficer@dayflow.test", peopleOps, "HR Officer", null, "Bengaluru", "Full-time",
+        LocalDate.now().minusDays(200), "HR_OFFICER");
     long payrollId = seedPerson("Kabir Shah", "payroll@dayflow.test", finance, "Payroll Officer", null, "Mumbai", "Full-time",
         LocalDate.now().minusDays(250), "PAYROLL_OFFICER");
     long managerId = seedPerson("Rohan Mehta", "manager@dayflow.test", engineering, "Engineering Manager", null,
         "Hyderabad", "Full-time", LocalDate.now().minusDays(500), "MANAGER");
     long employeeId = seedPerson("Dev Iyer", "employee@dayflow.test", engineering, "Frontend Engineer", managerId,
         "Hyderabad", "Full-time", LocalDate.now().minusDays(140), "EMPLOYEE");
+    long auditorId = seedPerson("Nisha Rao", "auditor@dayflow.test", finance, "Internal Auditor", null, "Mumbai",
+        "Full-time", LocalDate.now().minusDays(220), "AUDITOR");
 
     seedShiftsAndAttendance(managerId, employeeId);
-    seedLeave(managerId, employeeId, payrollId);
+    seedLeave(managerId, employeeId, payrollId, auditorId);
+    seedPayroll(superAdminId, hrAdminId, hrOfficerId, managerId, employeeId, payrollId);
     jdbc.update("update automation_rules set owner_user_id = ?", superAdminId);
 
     jdbc.update("""
@@ -129,11 +139,11 @@ public class DemoDataSeeder implements CommandLineRunner {
         managerId, recentWeekdays.get(0), LocalDateTime.of(recentWeekdays.get(0), LocalTime.of(9, 2)));
   }
 
-  private void seedLeave(long managerId, long employeeId, long payrollId) {
+  private void seedLeave(long managerId, long employeeId, long payrollId, long auditorId) {
     LeaveType annual = leaveTypeRepository.findAllActive().stream().filter(t -> t.name().equals("Annual Leave")).findFirst().orElseThrow();
     LeaveType sick = leaveTypeRepository.findAllActive().stream().filter(t -> t.name().equals("Sick Leave")).findFirst().orElseThrow();
 
-    for (long id : List.of(managerId, employeeId, payrollId)) {
+    for (long id : List.of(managerId, employeeId, payrollId, auditorId)) {
       leaveBalanceRepository.setBalance(id, annual.id(), new BigDecimal("18"));
       leaveBalanceRepository.setBalance(id, sick.id(), new BigDecimal("10"));
     }
@@ -157,6 +167,29 @@ public class DemoDataSeeder implements CommandLineRunner {
     jdbc.update("insert into audit_logs(actor_user_id, action, entity, entity_id, reason, request_id) values (?,?,?,?,?,?)",
         userRepository.findByEmployeeId(payrollId).map(a -> a.id()).orElse(null), "SUBMIT_LEAVE_REQUEST", "LeaveRequest",
         String.valueOf(approvedId), "Auto-approved: single working day with sufficient balance", "seed");
+  }
+
+  /** Verifies bank/tax details and gives everyone but the auditor a salary structure, so a demo
+   * payroll run has both clean lines and a real, honest blocking anomaly (missing salary
+   * structure + unverified bank/tax) to review rather than starting from an all-green state. */
+  private void seedPayroll(long superAdminId, long hrAdminId, long hrOfficerId, long managerId, long employeeId, long payrollId) {
+    java.util.Map<Long, BigDecimal[]> structures = java.util.Map.of(
+        superAdminId, new BigDecimal[] {new BigDecimal("180000"), new BigDecimal("36000"), new BigDecimal("20000")},
+        hrAdminId, new BigDecimal[] {new BigDecimal("95000"), new BigDecimal("19000"), new BigDecimal("8000")},
+        hrOfficerId, new BigDecimal[] {new BigDecimal("60000"), new BigDecimal("12000"), new BigDecimal("5000")},
+        managerId, new BigDecimal[] {new BigDecimal("140000"), new BigDecimal("28000"), new BigDecimal("15000")},
+        employeeId, new BigDecimal[] {new BigDecimal("75000"), new BigDecimal("15000"), new BigDecimal("6000")},
+        payrollId, new BigDecimal[] {new BigDecimal("70000"), new BigDecimal("14000"), new BigDecimal("6000")});
+
+    structures.forEach((id, amounts) -> {
+      employeeRepository.setPayrollVerificationFlags(id, true, true);
+      jdbc.update("""
+          insert into salary_structures(employee_id, effective_from, basic_monthly, hra_monthly, allowances_monthly,
+                                         recurring_deductions_monthly, reason, created_by_user_id)
+          values (?, ?, ?, ?, ?, ?, ?, ?)
+          """, id, LocalDate.now().minusDays(180), amounts[0], amounts[1], amounts[2], BigDecimal.ZERO,
+          "Initial demo salary structure", superAdminId);
+    });
   }
 
   private void attendanceRow(long employeeId, LocalDate date, LocalTime checkIn, LocalTime checkOut, int lateMinutes,

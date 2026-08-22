@@ -18,6 +18,34 @@ export type TokenPairResponse = {
   user: UserView;
 };
 
+export type AuthMessage = { message: string };
+export type PasskeyOptionsResponse = { challenge: string; publicKey: Record<string, unknown> };
+export type PasskeyView = {
+  credentialId: string;
+  deviceName: string;
+  transports: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
+export type AuthSession = {
+  id: number;
+  createdIp: string | null;
+  userAgent: string | null;
+  deviceName: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string;
+  current: boolean;
+};
+export type SecurityEvent = {
+  id: number;
+  eventType: string;
+  severity: string;
+  detail: string;
+  ipAddress: string | null;
+  createdAt: string;
+};
+
 export type Employee = {
   id: number;
   employeeCode: string | null;
@@ -36,6 +64,8 @@ export type Employee = {
   createdAt: string | null;
   updatedAt: string | null;
   hasLoginAccount: boolean;
+  bankVerified: boolean;
+  taxIdVerified: boolean;
 };
 
 export type EmployeeJobHistoryEntry = {
@@ -95,7 +125,7 @@ export type DepartmentCount = { department: string; activeCount: number };
 export type RecentActivityItem = { actor: string; action: string; entity: string; createdAt: string };
 export type AttentionItem = {
   severity: string; title: string; detail: string; actionLabel: string; href: string;
-  entityType: "Employee" | "LeaveRequest" | "AttendanceCorrection" | null; entityId: number | null;
+  entityType: "Employee" | "LeaveRequest" | "AttendanceCorrection" | "PayrollRun" | null; entityId: number | null;
 };
 
 export type UpcomingLeaveItem = { employeeName: string; leaveTypeName: string; startDate: string; endDate: string };
@@ -235,6 +265,83 @@ export type AutomationExecution = {
   errorMessage: string | null;
 };
 
+// ---- Phase 4: Payroll ----
+
+export type SalaryStructure = {
+  id: number;
+  employeeId: number;
+  employeeName: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  basicMonthly: string;
+  hraMonthly: string;
+  allowancesMonthly: string;
+  recurringDeductionsMonthly: string;
+  grossMonthly: string;
+  status: "ACTIVE" | "SUPERSEDED";
+  reason: string | null;
+  createdByName: string;
+  createdAt: string;
+};
+
+export type PayrollRunStatus = "DRAFT" | "CALCULATED" | "UNDER_REVIEW" | "APPROVED" | "PUBLISHED" | "PAID";
+
+export type PayrollRun = {
+  id: number;
+  periodMonth: string;
+  status: PayrollRunStatus;
+  calculatedByName: string | null;
+  calculatedAt: string | null;
+  approvedByName: string | null;
+  approvedAt: string | null;
+  approvalReason: string | null;
+  publishedByName: string | null;
+  publishedAt: string | null;
+  paidAt: string | null;
+  totalGross: string;
+  totalDeductions: string;
+  totalNet: string;
+  employeeCount: number;
+  createdByName: string;
+  createdAt: string;
+};
+
+export type PayrollLine = {
+  id: number;
+  payrollRunId: number;
+  employeeId: number;
+  employeeName: string;
+  departmentName: string | null;
+  basic: string;
+  hra: string;
+  allowances: string;
+  overtimePay: string;
+  grossEarnings: string;
+  unpaidLeaveDays: string;
+  unpaidLeaveDeduction: string;
+  taxDeduction: string;
+  otherDeductions: string;
+  totalDeductions: string;
+  netPay: string;
+};
+
+export type PayrollAnomaly = {
+  id: number;
+  payrollRunId: number;
+  employeeId: number | null;
+  employeeName: string | null;
+  issueCode: string;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  possibleCause: string;
+  recommendedAction: string;
+  blocking: boolean;
+  reviewStatus: "OPEN" | "ACKNOWLEDGED" | "RESOLVED";
+  resolutionNote: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+};
+
 // ---- Team Management (spec §41): teams, projects, tasks, workload ----
 
 export type Team = {
@@ -365,4 +472,159 @@ export type WorkloadRow = {
   approvedLeaveDays: string;
   remainingHours: string;
   riskLevel: string;
+};
+
+// ---- Phase 5: Communication (email, HR help desk, policies, assistant) ----
+
+export type EmailTemplate = {
+  id: number;
+  code: string;
+  category: string;
+  name: string;
+  subject: string;
+  body: string;
+  active: boolean;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RecipientSelector = { employeeIds: number[]; departmentId: number | null; allActive: boolean };
+
+export type RecipientPreview = {
+  recipientCount: number;
+  sampleNames: string[];
+  senderIdentity: string;
+  sampleRenderedSubject: string;
+  sampleRenderedBody: string;
+  requiresBulkConfirmation: boolean;
+};
+
+export type EmailMessage = {
+  id: number;
+  senderName: string;
+  templateId: number | null;
+  subject: string;
+  body: string;
+  recipientEmployeeIds: number[];
+  recipientCount: number;
+  status: "QUEUED" | "SCHEDULED" | "SENT" | "FAILED";
+  scheduledAt: string | null;
+  sentAt: string | null;
+  bulkConfirmed: boolean;
+  failureReason: string | null;
+  createdAt: string;
+};
+
+export type EmailDelivery = {
+  id: number;
+  emailMessageId: number;
+  employeeId: number;
+  employeeName: string;
+  emailAddress: string;
+  status: "PENDING" | "SENT" | "FAILED";
+  sentAt: string | null;
+  errorMessage: string | null;
+};
+
+export type TicketStatus = "OPEN" | "ASSIGNED" | "IN_PROGRESS" | "WAITING" | "RESOLVED" | "CLOSED";
+export type TicketPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export type HrTicket = {
+  id: number;
+  employeeId: number;
+  employeeName: string;
+  category: string;
+  subject: string;
+  description: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  confidential: boolean;
+  assignedToName: string | null;
+  assignedToUserId: number | null;
+  slaDueAt: string;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  satisfactionRating: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AssignableStaff = { userId: number; name: string; roleName: string; canHandleConfidential: boolean };
+
+export type HrTicketMessage = {
+  id: number;
+  ticketId: number;
+  authorName: string;
+  body: string;
+  internalNote: boolean;
+  createdAt: string;
+};
+
+export type Policy = {
+  id: number;
+  code: string;
+  title: string;
+  category: string;
+  body: string;
+  effectiveDate: string;
+  active: boolean;
+  createdAt: string;
+};
+
+// ---- Phase 6: Performance & workforce insights ----
+
+export type Goal = {
+  id: number;
+  employeeId: number;
+  employeeName: string;
+  title: string;
+  description: string | null;
+  category: string;
+  dueDate: string | null;
+  status: "IN_PROGRESS" | "COMPLETED" | "MISSED" | "CANCELLED";
+  progressPercent: number;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PerformanceReview = {
+  id: number;
+  employeeId: number;
+  employeeName: string;
+  reviewerUserId: number;
+  reviewerName: string;
+  cycle: string;
+  rating: number | null;
+  strengths: string | null;
+  improvements: string | null;
+  managerComments: string | null;
+  status: "DRAFT" | "SUBMITTED" | "ACKNOWLEDGED";
+  submittedAt: string | null;
+  acknowledgedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type HeadcountPoint = { period: string; headcount: number; projected: boolean };
+
+export type AttritionRiskEntry = {
+  employeeId: number;
+  employeeName: string;
+  departmentName: string | null;
+  riskLevel: "LOW" | "MEDIUM" | "HIGH";
+  riskScore: number;
+  signals: string[];
+};
+
+export type AssistantInteraction = {
+  id: number;
+  employeeId: number;
+  question: string;
+  intent: string;
+  answer: string;
+  policyId: number | null;
+  actionTaken: string | null;
+  createdAt: string;
 };

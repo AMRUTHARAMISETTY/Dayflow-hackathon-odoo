@@ -1,4 +1,4 @@
-# Dayflow HR Portal — Phase 3: Automation
+# Dayflow HR Portal — Phase 6: Intelligence
 
 Dayflow is a post-login HR/Admin portal ("Every workday, perfectly aligned.") built from the
 full product blueprint. The blueprint describes a multi-year enterprise HR suite; this repo
@@ -6,10 +6,13 @@ implements it phase by phase, following the blueprint's own priority order (spec
 
 1. Foundation — auth, permissions, employee directory, responsive shell, audit.
 2. Core HR — attendance, leave, approvals, notifications.
-3. **Automation** (this phase) — Action Center, reminders, workflow and rule builder.
-4. Payroll & docs — payroll, anomalies, salary slips, document generator.
-5. Communication — built-in email, templates, announcements, HR help desk.
-6. Intelligence — self-service assistant, forecasting, performance summaries.
+3. Automation — Action Center, reminders, workflow and rule builder.
+4. Payroll — payroll, anomalies, salary slips. (Document generation, the other half of the
+   blueprint's "Payroll & docs" phase, is not built yet — see Known simplifications.)
+5. Communication — built-in email, templates, HR help desk, company policies, and a rule-based
+   self-service assistant.
+6. **Intelligence** (this phase) — goals, performance reviews, and rule-based workforce insights
+   (headcount trend, attrition risk signals).
 7. Scale — integrations, scheduled reports, offline resilience, hardening.
 
 Nothing from later phases is faked. Where the dashboard or navigation references a module that
@@ -97,12 +100,16 @@ cd backend
 mvn test
 ```
 
-The suite exercises the security properties spec sections 2, 7, 8 and 21 call out: public
-registration can't self-elevate, row-level employee/attendance/leave visibility follows role
-scope, sensitive job changes require a reason, refresh tokens are single-use, an HR Admin can't
-invite a Super Admin or peer HR Admin account, a single low-risk day of leave auto-approves while
-a multi-day request routes to the manager, and an approved attendance correction actually mutates
-the underlying record.
+The suite exercises the security properties spec sections 2, 7, 8, 9, 17 and 21 call out: public
+registration can't self-elevate, row-level employee/attendance/leave/payroll visibility follows
+role scope, sensitive job changes require a reason, refresh tokens are single-use, an HR Admin
+can't invite a Super Admin or peer HR Admin account, a single low-risk day of leave auto-approves
+while a multi-day request routes to the manager, an approved attendance correction actually
+mutates the underlying record, an automation dry-run never notifies anyone or mutates state,
+payroll maker-checker actually blocks the calculator from approving their own run, a confidential
+HR ticket is invisible to (and can't be assigned to) staff without `ticket:confidential:read`,
+internal ticket notes stay hidden from the reporting employee, and the self-service assistant's
+escalate path really does create an HR ticket.
 
 Frontend:
 
@@ -174,6 +181,80 @@ npm.cmd test
   correction, and onboarding follow-up in one screen with real inline Approve/Reject actions,
   built on the same permission-scoped list the dashboard's "Needs your attention" widget uses.
 
+**Phase 4 — Payroll**
+
+- Versioned, effective-dated salary structures (basic/HRA/allowances/recurring deductions);
+  revising one supersedes the previous version rather than editing it in place, so compensation
+  history stays intact. Owned by HR Admin, not Payroll Officer — spec section 2's "payroll
+  permissions must be separated from general HR permissions" is enforced by giving `salary:write`
+  and `payroll:manage` to different roles.
+- The full Draft → Calculated → Under Review → Approved → Published → Paid cycle
+  (**Finance → Payroll**), with genuine maker-checker: the run's `calculated_by` user id is
+  checked against the approver's, so the same person can never both calculate and approve.
+- An anomaly engine that runs on every calculation: missing salary structure, unverified
+  bank/tax details, negative net pay (all **blocking** — publish is refused until each is
+  reviewed), plus unusual overtime, unexpected salary change since the last revision, and a
+  cross-check against pending attendance corrections (all non-blocking, surfaced for review).
+- Pay is computed from real Phase 2 data, not placeholders: unpaid-leave days come from the same
+  day-resolution logic the Attendance module uses (a day with no check-in, no approved leave, and
+  no holiday/weekend is unpaid), and overtime pay comes from summed `attendance_records.overtime_minutes`.
+- Salary slips are read-only and only ever visible once a run reaches Published/Paid — an
+  employee sees only their own, via the same self/broad scoping pattern as attendance and leave.
+  Publishing notifies every affected employee.
+- Employee 360 gained a **Payroll** tab: current structure, bank/tax verification toggles,
+  structure history, and published slips, gated by `salary:read` / `payroll:read` / `payroll:read:own`.
+
+**Phase 5 — Communication**
+
+- **Built-in email** (**Communication → Email**, `email:read`/`email:send`/`email:templates:manage`):
+  compose to an explicit employee list, a department, or all active employees, with `{{merge_field}}`
+  templating (`employee_name`, `employee_id`, `department`, `designation`, `manager_name`,
+  `joining_date`, `organization_name`) rendered per recipient. Nine seeded lifecycle/leave/
+  attendance/payroll/engagement templates, HR-authorable custom templates, a mandatory recipient
+  preview (count + sample render) before sending, and a bulk-send guard: anything over 10
+  recipients is refused unless the request explicitly confirms it just saw that preview (spec
+  10.1). Sends go through an `EmailProvider` abstraction — `LocalDevEmailProvider` logs what
+  would have gone out instead of calling a real SMTP/Graph/Gmail API, since no such credential is
+  configured in this environment — so message/delivery status, idempotency-keyed retries, and a
+  self-test-send are all real, just not actually leaving the building.
+- **HR Help Desk** (**Communication → Help Desk**, `ticket:read`/`ticket:read:own`/`ticket:manage`/
+  `ticket:confidential:read`): employees raise tickets against a category; priority and a
+  by-priority SLA due date (Critical 4h → Low 120h) are suggested from keyword matching on the
+  subject/description (harassment/safety/legal/etc. → High), not a model call. Confidential
+  tickets (grievances) are structurally restricted — only the reporting employee, `ticket:
+  confidential:read` holders (Super Admin, HR Admin), and whoever the ticket is assigned to can
+  ever see one; assigning a confidential ticket to someone without that permission is refused
+  outright, so an HR Officer can be trusted with general tickets without ever being handed a
+  grievance. HR-only internal notes on a ticket thread stay invisible to the reporting employee.
+  Employees rate a resolved/closed ticket 1-5.
+- **Company policies** (**Communication → Policies**, `policy:read`/`policy:manage`): a simple
+  versioned policy library (four seeded: Leave, Remote & Hybrid Work, Attendance & Punctuality,
+  Code of Conduct) readable by every role, editable/archivable only by HR.
+- **Self-service assistant** (**Communication → Assistant**, `assistant:use`): answers leave-
+  balance, salary-slip, attendance, and policy questions by routing on keyword intent over the
+  same live data the rest of the portal reads — there's no LLM credential configured here, so it
+  never generates free text, only assembles it from real records. Every question, detected
+  intent, and answer is logged to `assistant_interactions` so HR can see what people are actually
+  asking. Anything it can't answer offers a one-click escalation straight into an HR ticket
+  (logged as its own `ESCALATION` interaction referencing the created ticket).
+
+**Phase 6 — Intelligence**
+
+- **Goals & performance reviews** (**Employee Experience → Performance**,
+  `performance:read:own`/`performance:read`/`performance:manage`/`performance:manage:reports`):
+  HR can set/manage goals and reviews for anyone; a Manager is scoped server-side to their direct
+  reports only (`employee.managerId == actor`) — the same reports-scoping pattern used for
+  attendance and leave. Every employee sees and progresses their own goals and acknowledges their
+  own submitted reviews. A review is maker-checker-adjacent: only the assigned reviewer (or HR)
+  can submit it, and only the reviewed employee can acknowledge it.
+- **Workforce insights** (**Insights → Workforce Insights**, `insights:read`, HR/Auditor only):
+  a headcount trend (active roster by join month, real data) with a simple 2-month linear
+  projection from the last 3 months' net change, and rule-based attrition-risk flags (no approved
+  leave in 90 days despite 6+ months' tenure, 5+ late arrivals in 30 days, no manager assigned, or
+  a very new hire) computed from real attendance/leave/tenure records. Both are explicitly
+  transparent, auditable rules — not a forecasting or ML model, since no such credential is
+  configured in this environment (same honesty principle as the Phase 5 assistant).
+
 ## Environment variables
 
 - `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` — PostgreSQL connection, defaults match
@@ -190,16 +271,32 @@ npm.cmd test
 
 - Invitation and refresh tokens are returned to the client in the JSON body rather than an
   httpOnly cookie; a production deployment should move them behind a same-site cookie.
-- Invitation links are shown directly in the UI instead of emailed — real email delivery is
-  Phase 5 (Built-in Email and Communication Center).
+- Invitation links are still shown directly in the UI rather than emailed — the Phase 5 email
+  module isn't wired into the invitation flow yet, only into HR-initiated composition/templates.
+- No real SMTP/Graph/Gmail credential is configured; `EmailProvider` is an abstraction with a
+  `LocalDevEmailProvider` that logs what would be sent. Swapping in a real provider is a matter of
+  adding a new `EmailProvider` implementation, not changing any calling code.
+- The self-service assistant is rule-based keyword routing over real data, not a generative model
+  — there's no LLM credential configured in this environment. It only ever answers from the four
+  intents it recognizes (leave balance, salary slip, attendance, policy) and otherwise offers to
+  raise a ticket.
 - Single-organization only; the "organization scope" mentioned for HR Admin in spec section 2
   is represented by employee `location`, not multi-tenancy.
-- No file uploads, document generation, or PDF export yet (Phase 4).
+- No file uploads, document generation, or PDF export yet — salary slips and job letters are
+  structured data rendered in the UI, not downloadable PDFs. This is the other half of the
+  blueprint's "Payroll & docs" phase, not yet built.
 - Attendance corrections are self-service only (an employee requests, a manager/HR decides); HR
   filing a correction on someone else's behalf isn't built yet.
 - No shift-management UI yet — shifts exist and are assignable via the API/seed data, but there's
   no admin screen to create or reassign them (nav item is marked accordingly).
 - "Manager delegation during absence" (spec section 8) isn't built — while a manager is out,
   their approval queue still waits on them or falls back to HR, not a delegate.
-- No unified cross-module "My Tasks"/Action Center inbox yet — leave approvals and attendance
-  corrections each have their own queue; a single combined inbox is Phase 3.
+- Tax is a flat 10% placeholder, not a real jurisdiction-specific slab-based statutory engine —
+  building one correctly is out of scope here and would need real tax/compliance input.
+- "Duplicate allowance" and "inactive employee included in payroll" (spec section 9.1) aren't
+  separately flagged: the salary structure model uses single allowance/deduction totals rather
+  than itemized line items, and the payroll population is computed as active-employees-at-run-time,
+  so an inactive employee can't be included by construction.
+- Demo attendance history only covers the last few days, so a month-to-date payroll calculation
+  will show large unpaid-leave deductions for seeded accounts — the calculation is real and
+  correct given the data; the seed data just doesn't populate a full month.
