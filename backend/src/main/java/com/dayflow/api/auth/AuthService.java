@@ -59,11 +59,18 @@ public class AuthService {
 
   @Transactional
   TokenPairResponse login(LoginRequest request, String ip) {
-    UserAccount account = userRepository.findByEmail(request.email())
+    String identifier = request.identifier() == null || request.identifier().isBlank() ? request.email() : request.identifier();
+    UserAccount account = userRepository.findByEmailOrEmployeeCode(identifier)
         .orElseThrow(() -> ApiException.unauthorized("Invalid email or password."));
+    if (!identifier.contains("@") && !"EMPLOYEE".equals(account.roleName())) {
+      auditService.record(account.id(), "LOGIN_DENIED_EMPLOYEE_ID_FOR_PRIVILEGED_ROLE", "User",
+          String.valueOf(account.id()), null, null, "Privileged users must sign in with company email or passkey");
+      throw ApiException.unauthorized("Invalid email or password.");
+    }
     if (!passwordEncoder.matches(request.password(), account.passwordHash())) {
       throw ApiException.unauthorized("Invalid email or password.");
     }
+    assertAccountAllowed(account);
     userRepository.markLoggedIn(account.id());
     auditService.record(account.id(), "LOGIN", "User", String.valueOf(account.id()), null, null, null);
     return issueTokenPair(account.id(), ip);
@@ -101,6 +108,7 @@ public class AuthService {
   private TokenPairResponse issueTokenPair(long userId, String ip) {
     UserAccount account = userRepository.findById(userId)
         .orElseThrow(() -> ApiException.unauthorized("Account is not active."));
+    assertAccountAllowed(account);
     CurrentUser currentUser = new CurrentUser(account.id(), account.employeeId(), account.employeeName(),
         account.email(), account.roleName(), account.permissions());
     String accessToken = jwtService.issueAccessToken(currentUser);
@@ -113,8 +121,22 @@ public class AuthService {
   private UserView toView(UserAccount account) {
     Employee employee = employeeRepository.findById(account.employeeId()).orElse(null);
     return new UserView(account.id(), account.employeeId(), employee == null ? null : employee.employeeCode(),
-        account.employeeName(), account.email(), account.roleName(),
+        account.employeeName(), account.email(), account.roleName(), dashboardPath(account.roleName()),
         employee == null ? null : employee.departmentName(), employee == null ? null : employee.designation(),
         account.permissions());
+  }
+
+  private void assertAccountAllowed(UserAccount account) {
+    if (!account.active()) {
+      throw ApiException.unauthorized("Invalid email or password.");
+    }
+    String status = account.employeeStatus() == null ? "" : account.employeeStatus().toLowerCase();
+    if (status.contains("suspend") || status.contains("terminat") || status.contains("archive")) {
+      throw ApiException.unauthorized("This account is not available. Please contact HR support.");
+    }
+  }
+
+  private String dashboardPath(String roleName) {
+    return "EMPLOYEE".equals(roleName) ? "/employee/dashboard" : "/admin/dashboard";
   }
 }

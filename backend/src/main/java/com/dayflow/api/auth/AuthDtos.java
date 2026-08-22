@@ -4,7 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-record LoginRequest(@Email @NotBlank String email, @NotBlank String password) {
+record LoginRequest(String identifier, String email, @NotBlank String password, boolean rememberDevice) {
 }
 
 /**
@@ -16,4 +16,22 @@ record RegisterRequest(@NotBlank String name, @Email @NotBlank String email, @No
 }
 
 record RefreshRequest(@NotBlank String refreshToken) {
+}
+
+record GenericIdentifierRequest(@NotBlank String identifier) {
+}
+
+record ResetPasswordRequest(@NotBlank String token, @NotBlank @Size(min = 8) String newPassword) {
+}
+
+record EmployeeActivationRequest(@NotBlank String employeeId, @Email @NotBlank String email) {
+}
+
+record OtpRequest(@NotBlank String identifier) {
+}
+
+record OtpVerifyRequest(@NotBlank String identifier, @NotBlank String otp) {
+}
+
+record SecurityMessageResponse(String message) {
 }

@@ -1,6 +1,7 @@
 package com.dayflow.api.auth;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,6 +19,10 @@ class RefreshTokenRepository {
     boolean isUsable() {
       return revokedAt == null && expiresAt.isAfter(LocalDateTime.now());
     }
+  }
+
+  record SessionView(long id, String createdIp, String userAgent, String deviceName, LocalDateTime createdAt,
+      LocalDateTime lastUsedAt, LocalDateTime expiresAt, boolean current) {
   }
 
   void insert(long userId, String tokenHash, LocalDateTime expiresAt, String ip) {
@@ -47,5 +52,31 @@ class RefreshTokenRepository {
 
   void revokeAllForUser(long userId) {
     jdbc.update("update refresh_tokens set revoked_at = current_timestamp where user_id = ? and revoked_at is null", userId);
+  }
+
+  List<SessionView> findActiveSessions(long userId, String currentTokenHash) {
+    return jdbc.query("""
+        select id, created_ip, user_agent, device_name, created_at, last_used_at, expires_at, token_hash
+        from refresh_tokens
+        where user_id = ? and revoked_at is null and expires_at > current_timestamp
+        order by created_at desc
+        """,
+        (rs, rowNum) -> new SessionView(
+            rs.getLong("id"),
+            rs.getString("created_ip"),
+            rs.getString("user_agent"),
+            rs.getString("device_name"),
+            rs.getTimestamp("created_at").toLocalDateTime(),
+            rs.getTimestamp("last_used_at") == null ? null : rs.getTimestamp("last_used_at").toLocalDateTime(),
+            rs.getTimestamp("expires_at").toLocalDateTime(),
+            currentTokenHash != null && currentTokenHash.equals(rs.getString("token_hash"))),
+        userId);
+  }
+
+  boolean revokeById(long userId, long sessionId) {
+    return jdbc.update("""
+        update refresh_tokens set revoked_at = current_timestamp
+        where id = ? and user_id = ? and revoked_at is null
+        """, sessionId, userId) > 0;
   }
 }

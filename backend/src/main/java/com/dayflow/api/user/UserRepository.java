@@ -16,7 +16,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class UserRepository {
   private static final String BASE_SELECT = """
-      select u.id, u.employee_id, emp.name employee_name, u.email, u.password_hash, u.role_id, r.name role_name, u.active
+      select u.id, u.employee_id, emp.employee_code, emp.name employee_name, emp.status employee_status,
+        u.email, u.password_hash, u.role_id, r.name role_name, u.active
       from users u
       join roles r on r.id = u.role_id
       join employees emp on emp.id = u.employee_id
@@ -30,6 +31,14 @@ public class UserRepository {
 
   public Optional<UserAccount> findByEmail(String email) {
     return query(BASE_SELECT + " where lower(u.email) = lower(?) and u.active = true", email);
+  }
+
+  public Optional<UserAccount> findByEmailOrEmployeeCode(String identifier) {
+    String trimmed = identifier == null ? "" : identifier.trim();
+    if (trimmed.contains("@")) {
+      return findByEmail(trimmed);
+    }
+    return query(BASE_SELECT + " where lower(emp.employee_code) = lower(?) and u.active = true", trimmed);
   }
 
   public Optional<UserAccount> findById(long id) {
@@ -73,6 +82,10 @@ public class UserRepository {
     jdbc.update("update users set last_login_at = current_timestamp where id = ?", userId);
   }
 
+  public void updatePassword(long userId, String passwordHash) {
+    jdbc.update("update users set password_hash = ? where id = ?", passwordHash, userId);
+  }
+
   private Optional<UserAccount> query(String sql, Object arg) {
     try {
       UserAccount base = jdbc.queryForObject(sql, this::mapWithoutPermissions, arg);
@@ -81,16 +94,17 @@ public class UserRepository {
           join role_permissions rp on rp.permission_id = p.id
           where rp.role_id = ? order by p.code
           """, String.class, base.roleId()));
-      return Optional.of(new UserAccount(base.id(), base.employeeId(), base.employeeName(), base.email(),
-          base.passwordHash(), base.roleId(), base.roleName(), base.active(), permissions));
+      return Optional.of(new UserAccount(base.id(), base.employeeId(), base.employeeCode(), base.employeeName(),
+          base.email(), base.passwordHash(), base.roleId(), base.roleName(), base.active(), base.employeeStatus(),
+          permissions));
     } catch (EmptyResultDataAccessException ex) {
       return Optional.empty();
     }
   }
 
   private UserAccount mapWithoutPermissions(ResultSet rs, int rowNum) throws SQLException {
-    return new UserAccount(rs.getLong("id"), rs.getLong("employee_id"), rs.getString("employee_name"),
-        rs.getString("email"), rs.getString("password_hash"), rs.getLong("role_id"), rs.getString("role_name"),
-        rs.getBoolean("active"), Set.of());
+    return new UserAccount(rs.getLong("id"), rs.getLong("employee_id"), rs.getString("employee_code"),
+        rs.getString("employee_name"), rs.getString("email"), rs.getString("password_hash"), rs.getLong("role_id"),
+        rs.getString("role_name"), rs.getBoolean("active"), rs.getString("employee_status"), Set.of());
   }
 }
