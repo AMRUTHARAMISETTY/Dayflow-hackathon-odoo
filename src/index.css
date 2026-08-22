@@ -214,7 +214,7 @@
     width: 3px;
     height: 16px;
     border-radius: 2px;
-    background: var(--today-rose, #b4453c);
+    background: #b4453c;
   }
   .dino-shocked-mark {
     position: absolute;
@@ -227,7 +227,7 @@
     border-radius: 50%;
     background: #fff;
     border: 0.5px solid var(--today-line);
-    color: var(--today-rose, #b4453c);
+    color: #b4453c;
     font-size: 16px;
     font-weight: 500;
     pointer-events: none;
