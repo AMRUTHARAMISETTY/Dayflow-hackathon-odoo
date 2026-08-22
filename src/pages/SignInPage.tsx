@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { motion } from "framer-motion"
-import { Eye, EyeOff, Fingerprint, Moon, ShieldCheck, Sun } from "lucide-react"
+import { Eye, EyeOff, Fingerprint, ShieldCheck } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth, type UserRole } from "../lib/auth"
 
@@ -13,22 +13,22 @@ type FormValues = z.infer<typeof schema>
 const benefits = ["Simplified attendance", "Faster leave approvals", "Secure employee records", "Smarter HR operations"]
 
 export default function SignInPage() {
-  const { signIn, signInWithPasskey } = useAuth(); const navigate = useNavigate(); const [role,setRole]=useState<UserRole>("EMPLOYEE"); const [method,setMethod]=useState<"ID"|"EMAIL"|"BIOMETRICS">("ID"); const [showPassword,setShowPassword]=useState(false); const [dark,setDark]=useState(false); const [serverError,setServerError]=useState(""); const [passkeyBusy,setPasskeyBusy]=useState(false)
+  const { signIn, signInWithPasskey } = useAuth(); const navigate = useNavigate(); const [role,setRole]=useState<UserRole>("EMPLOYEE"); const [method,setMethod]=useState<"ID"|"EMAIL"|"BIOMETRICS">("ID"); const [showPassword,setShowPassword]=useState(false); const [serverError,setServerError]=useState(""); const [passkeyBusy,setPasskeyBusy]=useState(false)
   const { register,handleSubmit,formState:{errors,isSubmitting} }=useForm<FormValues>({resolver:zodResolver(schema),defaultValues:{identifier:"",password:"",rememberDevice:false}})
   async function submit(values:FormValues){setServerError("");if(method==="EMAIL"&&!values.identifier.toLowerCase().endsWith(`@${companyDomain}`)){setServerError(`Use your @${companyDomain} company email.`);return}try{const result=await signIn(values.identifier,values.password,values.rememberDevice,role);if(result.mfa){navigate(`/verify-otp?identifier=${encodeURIComponent(result.identifier)}&purpose=ADMIN_LOGIN`);return}navigate(role==="ADMIN_HR"?"/admin/dashboard":"/employee/dashboard")}catch(error){setServerError(error instanceof Error?error.message:"The provided credentials could not be verified.")}}
   async function passkey(){setServerError("");setPasskeyBusy(true);try{const user=await signInWithPasskey();if(!user.roles.includes(role))throw new Error("This account does not have permission to access the selected portal.");navigate(role==="ADMIN_HR"?"/admin/dashboard":"/employee/dashboard")}catch(error){setServerError(error instanceof Error?error.message:"Biometric verification failed.")}finally{setPasskeyBusy(false)}}
-  function toggleTheme(){const next=!dark;setDark(next);document.documentElement.dataset.theme=next?"dark":"light"}
-
   return <main className="auth-layout">
     <motion.section className="auth-brand" initial={{opacity:0}} animate={{opacity:1}} aria-label="About Dayflow">
+      <video className="auth-brand-video" autoPlay loop muted playsInline preload="auto" aria-label="Dayflow workplace animation">
+        <source src="/dayflow-login.mp4" type="video/mp4" />
+      </video>
+      <div className="auth-brand-overlay" aria-hidden="true" />
       <div className="auth-logo"><span>D</span><strong>Dayflow</strong></div>
       <div className="auth-brand-copy"><h1>Every workday,<br/>perfectly aligned.</h1><p>One secure workspace for the people, details, and decisions that keep work moving.</p></div>
-      <img src="/images/dayflow-workplace.png" alt="A team collaborating in a modern workplace" />
       <ul>{benefits.map(item=><li key={item}><ShieldCheck aria-hidden="true"/>{item}</li>)}</ul>
     </motion.section>
     <section className="auth-form-side">
       <header className="auth-mobile-brand"><div className="auth-logo"><span>D</span><strong>Dayflow</strong></div><p>Every workday, perfectly aligned.</p></header>
-      <button className="auth-theme" type="button" onClick={toggleTheme} aria-label={dark?"Use light mode":"Use dark mode"}>{dark?<Sun/>:<Moon/>}</button>
       <motion.div className="auth-form-wrap" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{duration:.35}}>
         <div><h2>Welcome back</h2><p>Sign in securely to your Dayflow workspace.</p></div>
         <div className="auth-segments" aria-label="Select portal">{(["ADMIN_HR","EMPLOYEE"] as UserRole[]).map(value=><button type="button" aria-pressed={role===value} onClick={()=>{setRole(value);setServerError("")}} key={value}>{value==="ADMIN_HR"?"Admin/HR":"Employee"}</button>)}</div>

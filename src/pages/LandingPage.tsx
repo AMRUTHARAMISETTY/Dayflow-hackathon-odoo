@@ -17,7 +17,9 @@ export default function LandingPage() {
   const { scrollYProgress } = useScroll()
   const videoY = useTransform(scrollYProgress, [0, 0.24], [0, reducedMotion ? 0 : 110])
   const videoScale = useTransform(scrollYProgress, [0, 0.24], [1, reducedMotion ? 1 : 1.08])
+  const videoBlur = useTransform(scrollYProgress, [0, 0.13, 0.24], ["blur(0px)", "blur(0px)", reducedMotion ? "blur(0px)" : "blur(7px)"])
   const heroOpacity = useTransform(scrollYProgress, [0, 0.18], [1, reducedMotion ? 1 : 0.12])
+  const transitionOpacity = useTransform(scrollYProgress, [0, 0.2], [0.2, reducedMotion ? 0.2 : 1])
   const reveal = { initial: { opacity: 0, y: reducedMotion ? 0 : 54 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, amount: 0.22 }, transition: { duration: reducedMotion ? 0 : 0.75, ease: [0.22, 1, 0.36, 1] as const } }
 
   function goTo(href: string) {
@@ -28,10 +30,11 @@ export default function LandingPage() {
   return (
     <main className="landing-page">
       <section id="home" className="landing-hero">
-        <motion.video className="landing-video" style={{ y: videoY, scale: videoScale }} autoPlay loop muted playsInline preload="auto" aria-label="Dayflow cinematic workplace animation">
+        <motion.video className="landing-video" style={{ y: videoY, scale: videoScale, filter: videoBlur }} autoPlay loop muted playsInline preload="auto" aria-label="Dayflow cinematic workplace animation">
           <source src="/dayflow-hr-futuristic.mp4" type="video/mp4" />
         </motion.video>
         <div className="landing-shade" />
+        <motion.div className="landing-transition-light" style={{ opacity: transitionOpacity }} aria-hidden="true" />
 
         <div className="landing-header-mask" aria-hidden="true" />
         <header className="landing-header">
