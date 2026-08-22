@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: dayflow-api
+  datasource:
+    url: jdbc:h2:file:./data/dayflow-dev;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;AUTO_SERVER=TRUE
+    username: sa
+    password:
+  flyway:
+    enabled: true
+  h2:
+    console:
+      enabled: true
+server:
+  port: 8080
+dayflow:
+  cors-origin: http://localhost:5173
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
