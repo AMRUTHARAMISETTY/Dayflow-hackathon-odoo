@@ -10,6 +10,8 @@ interface Props {
   hours: string
   waveTrigger: number
   danceTrigger: number
+  shockedTrigger: number
+  angryTrigger: number
   onEventComplete: () => void
 }
 const DinoCanvas = lazy(() => import("./DinoCanvas"))
@@ -63,6 +65,8 @@ export default function TodayMascot(props: Props) {
       event={props.event}
       waveTrigger={props.waveTrigger}
       danceTrigger={props.danceTrigger}
+      shockedTrigger={props.shockedTrigger}
+      angryTrigger={props.angryTrigger}
       onEventComplete={props.onEventComplete}
     />
   )

@@ -61,6 +61,8 @@ export default function TodayPage() {
   const [mascotEvent, setMascotEvent] = useState<MascotEvent>("none")
   const [waveTrigger, setWaveTrigger] = useState(0)
   const [danceTrigger, setDanceTrigger] = useState(0)
+  const [shockedTrigger, setShockedTrigger] = useState(0)
+  const [angryTrigger, setAngryTrigger] = useState(0)
   const [error, setError] = useState("")
   const [devStatusOverride, setDevStatusOverride] = useState<MascotStatus | null>(null)
 
@@ -128,6 +130,21 @@ export default function TodayPage() {
     if (isNew) setDanceTrigger((n) => n + 1)
   }, [leaveRequests.data])
 
+  // Same pattern, for a newly-appearing overdue item — the dino gets a
+  // startled beat rather than finding out silently.
+  const seenOverdue = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    if (!attention.data) return
+    const overdueIds = attention.data.filter((item) => item.urgency === "overdue").map((item) => item.id)
+    if (seenOverdue.current === null) {
+      seenOverdue.current = new Set(overdueIds)
+      return
+    }
+    const isNew = overdueIds.some((id) => !seenOverdue.current!.has(id))
+    seenOverdue.current = new Set(overdueIds)
+    if (isNew) setShockedTrigger((n) => n + 1)
+  }, [attention.data])
+
   const buttonLabel =
     phase === "checking-in"
       ? "Checking in"
@@ -159,6 +176,8 @@ export default function TodayPage() {
             hours={durationLabel(minutes)}
             waveTrigger={waveTrigger}
             danceTrigger={danceTrigger}
+            shockedTrigger={shockedTrigger}
+            angryTrigger={angryTrigger}
             onEventComplete={() => setMascotEvent("none")}
           />
         </div>
@@ -236,6 +255,8 @@ export default function TodayPage() {
           onWave={() => setWaveTrigger((n) => n + 1)}
           onDance={() => setDanceTrigger((n) => n + 1)}
           onJump={() => setMascotEvent("check-in")}
+          onAngry={() => setAngryTrigger((n) => n + 1)}
+          onShocked={() => setShockedTrigger((n) => n + 1)}
         />
       )}
     </div>

@@ -8,12 +8,16 @@ export default function DevMascotSwitcher({
   onWave,
   onDance,
   onJump,
+  onAngry,
+  onShocked,
 }: {
   value: MascotStatus | null
   onChange: (value: MascotStatus | null) => void
   onWave: () => void
   onDance: () => void
   onJump: () => void
+  onAngry: () => void
+  onShocked: () => void
 }) {
   return (
     <div className="dev-mascot-switcher">
@@ -38,7 +42,14 @@ export default function DevMascotSwitcher({
         <button type="button" onClick={onJump}>
           Jump
         </button>
+        <button type="button" onClick={onAngry}>
+          Angry
+        </button>
+        <button type="button" onClick={onShocked}>
+          Shocked
+        </button>
       </div>
+      <p style={{ marginTop: 4 }}>Sit/read/relax cycle randomly while working — click the dino 3x fast for Angry.</p>
     </div>
   )
 }

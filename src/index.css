@@ -175,6 +175,64 @@
   .dino-confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
   .dino-confetti-dot { position: absolute; top: 0; width: 6px; height: 6px; border-radius: 50%; }
 
+  /* ---- activity props: held in front of the dino during the random
+     working-day vignettes (typing / reading / relaxed). */
+  .dino-prop {
+    position: absolute;
+    left: 50%;
+    bottom: 34%;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+  .dino-prop-laptop { position: absolute; }
+  .dino-prop-blink {
+    position: absolute;
+    top: 8px;
+    left: 14px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--today-accent);
+    animation: dino-blink 1.1s steps(1) infinite;
+  }
+  @keyframes dino-blink {
+    0%, 40% { opacity: 1; }
+    41%, 100% { opacity: 0; }
+  }
+
+  /* ---- reaction marks: brief, above the head, never blocking the face. */
+  .dino-anger {
+    position: absolute;
+    top: 2%;
+    left: 8%;
+    display: flex;
+    gap: 3px;
+    pointer-events: none;
+  }
+  .dino-anger-line {
+    display: block;
+    width: 3px;
+    height: 16px;
+    border-radius: 2px;
+    background: var(--today-rose, #b4453c);
+  }
+  .dino-shocked-mark {
+    position: absolute;
+    top: -2%;
+    left: 18%;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #fff;
+    border: 0.5px solid var(--today-line);
+    color: var(--today-rose, #b4453c);
+    font-size: 16px;
+    font-weight: 500;
+    pointer-events: none;
+  }
+
   /* ---- speech bubble: normal flow, above the dino, never absolutely
      positioned over the artwork. */
   .dino-bubble {
