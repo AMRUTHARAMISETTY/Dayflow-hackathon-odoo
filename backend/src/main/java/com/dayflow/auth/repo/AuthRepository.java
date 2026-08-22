@@ -15,6 +15,12 @@ public class AuthRepository {
   public AuthRepository(JdbcClient db) { this.db = db; }
 
   public Optional<User> findUser(String identifier) {
+    if (identifier == null || identifier.isBlank()) return Optional.empty();
+    try {
+      return findUser(UUID.fromString(identifier.trim()));
+    } catch (IllegalArgumentException ignored) {
+      // Normal login identifiers are company email addresses or employee IDs.
+    }
     return db.sql("""
       SELECT u.*, COALESCE(array_agg(r.code) FILTER (WHERE r.code IS NOT NULL),'{}') roles
       FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id

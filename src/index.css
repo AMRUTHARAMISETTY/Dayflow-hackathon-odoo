@@ -304,6 +304,13 @@
   .auth-form-wrap { width:100%; max-width:440px; display:grid; gap:28px; }
   .auth-form-wrap h2 { font-size:32px; line-height:1.15; font-weight:500; letter-spacing:-.025em; }
   .auth-form-wrap>div>p { margin-top:8px; color:#64748b; }
+  .auth-segments { display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:4px; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc; }
+  .auth-segments button { min-height:40px; border-radius:8px; color:#64748b; font-size:13px; font-weight:500; }
+  .auth-segments button[aria-pressed=true] { background:white; color:#312e81; box-shadow:0 1px 4px rgb(15 23 42/.12); }
+  .auth-methods { grid-template-columns:repeat(3,1fr); margin-top:-16px; }
+  .auth-biometric { display:grid; justify-items:center; gap:12px; padding:24px; border:1px solid #e2e8f0; border-radius:14px; text-align:center; }
+  .auth-biometric>svg { width:42px; height:42px; color:#4338ca; }.auth-biometric h3{font-size:17px;font-weight:500}.auth-biometric p{color:#64748b;font-size:13px;line-height:1.5}.auth-biometric .auth-passkey{width:100%;margin-top:4px}.auth-another{color:#4338ca;font-size:13px;font-weight:500}
+  .auth-biometric .auth-enrollment-help { margin-top:6px; padding-top:14px; border-top:1px solid #e2e8f0; }
   .auth-form-wrap form { display:grid; gap:18px; }
   .auth-form-wrap form>label { display:grid; gap:8px; font-size:14px; font-weight:500; }
   .auth-password-field { display:grid; gap:8px; font-size:14px; font-weight:500; }
@@ -329,5 +336,6 @@
   :root[data-theme=dark] .auth-form-side { background:#0f172a;color:#f8fafc; }
   :root[data-theme=dark] .auth-form-wrap input:not([type=checkbox]) { border-color:#475569; }
   :root[data-theme=dark] .auth-theme { border-color:#334155;color:#cbd5e1; }
+  :root[data-theme=dark] .auth-segments { border-color:#334155;background:#111c30; }:root[data-theme=dark] .auth-segments button[aria-pressed=true]{background:#1e293b;color:#e0e7ff}:root[data-theme=dark] .auth-biometric{border-color:#334155}
   @media(max-width:860px){.auth-layout{display:block}.auth-brand{display:none}.auth-form-side{min-height:100vh;padding:112px 24px 40px}.auth-mobile-brand{position:absolute;display:block;top:24px;left:24px}.auth-mobile-brand .auth-logo{color:#0f172a}.auth-mobile-brand p{margin-top:5px;color:#64748b;font-size:12px}:root[data-theme=dark] .auth-mobile-brand .auth-logo{color:#fff}}
 }

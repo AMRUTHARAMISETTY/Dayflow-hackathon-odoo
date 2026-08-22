@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { Link } from "react-router-dom"
 import PageHeader from "../components/ui/PageHeader"
 import Card from "../components/ui/Card"
 import { CardSkeleton } from "../components/ui/Skeleton"
@@ -52,6 +53,11 @@ export default function MePage() {
             <p className="mt-1 font-mono-tabular text-xs text-slate">{profile.readOnly.employeeId}</p>
           </Card>
           <CompletenessMeter profile={profile} />
+          <Card className="p-4">
+            <h2 className="text-sm font-semibold text-ink">Security and devices</h2>
+            <p className="mt-1 text-xs text-slate">Set up fingerprint, Face ID, Windows Hello, or another passkey.</p>
+            <Link to="/security" className="mt-3 inline-flex min-h-10 items-center rounded-lg bg-meridian px-4 text-sm font-semibold text-white">Manage passkeys</Link>
+          </Card>
         </div>
 
         <div className="lg:col-span-2 space-y-4">

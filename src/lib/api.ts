@@ -46,21 +46,30 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
     throw new Error(body?.message ?? (response.status >= 500 ? "Dayflow is temporarily unavailable." : "The request could not be completed."))
   }
   if (response.status === 204) return undefined as T
-  return response.json() as Promise<T>
+  const body = await response.text()
+  if (!body) return undefined as T
+  return JSON.parse(body) as T
 }
 
 export { API_URL }
 
 export async function registerPasskey(label: string) {
   if (!window.PublicKeyCredential) throw new Error("Passkeys are not supported in this browser.")
-  const options = await api<Record<string, any>>("/api/auth/passkeys/register/options", { method: "POST" })
-  options.challenge = decode(options.challenge)
-  options.user.id = decode(options.user.id)
-  options.excludeCredentials = (options.excludeCredentials ?? []).map((item: { id: string }) => ({ ...item, id: decode(item.id) }))
-  const credential = await navigator.credentials.create({ publicKey: options as PublicKeyCredentialCreationOptions }) as PublicKeyCredential | null
-  if (!credential) throw new Error("Passkey setup was cancelled.")
-  const attestation = credential.response as AuthenticatorAttestationResponse
-  return api("/api/auth/passkeys/register/verify", { method: "POST", body: JSON.stringify({ publicKey: { label, credential: { id: credential.id, rawId: encode(credential.rawId), type: credential.type, response: { attestationObject: encode(attestation.attestationObject), clientDataJSON: encode(attestation.clientDataJSON), transports: attestation.getTransports?.() ?? [] }, clientExtensionResults: credential.getClientExtensionResults(), authenticatorAttachment: credential.authenticatorAttachment } } }) })
+  try {
+    const options = await api<Record<string, any>>("/api/auth/passkeys/register/options", { method: "POST" })
+    options.challenge = decode(options.challenge)
+    options.user.id = decode(options.user.id)
+    options.excludeCredentials = (options.excludeCredentials ?? []).map((item: { id: string }) => ({ ...item, id: decode(item.id) }))
+    const credential = await navigator.credentials.create({ publicKey: options as PublicKeyCredentialCreationOptions }) as PublicKeyCredential | null
+    if (!credential) throw new Error("Passkey setup was cancelled.")
+    const attestation = credential.response as AuthenticatorAttestationResponse
+    return api("/api/auth/passkeys/register/verify", { method: "POST", body: JSON.stringify({ publicKey: { label, credential: { id: credential.id, rawId: encode(credential.rawId), type: credential.type, response: { attestationObject: encode(attestation.attestationObject), clientDataJSON: encode(attestation.clientDataJSON), transports: attestation.getTransports?.() ?? [] }, clientExtensionResults: credential.getClientExtensionResults(), authenticatorAttachment: credential.authenticatorAttachment } } }) })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "NotAllowedError") throw new Error("Passkey setup was cancelled or timed out. Keep this page open and approve the device prompt when you try again.")
+    if (error instanceof DOMException && error.name === "InvalidStateError") throw new Error("This device already has a passkey for Dayflow.")
+    if (error instanceof DOMException) throw new Error("This device could not create a passkey. Try another browser or use your password.")
+    throw error
+  }
 }
 
 function decode(value: string) { const base64 = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "="); return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)).buffer }
