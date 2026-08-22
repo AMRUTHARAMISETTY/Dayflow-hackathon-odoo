@@ -15,6 +15,7 @@ import SupportPage from "./pages/SupportPage"
 import AdminDashboardPage from "./pages/AdminDashboardPage"
 import SecurityDevicesPage from "./pages/SecurityDevicesPage"
 import { ActivateEmployeePage, ForgotPasswordPage, OtpPage, ResetPasswordPage } from "./pages/AuthFlowPages"
+import LandingPage from "./pages/LandingPage"
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <AuthProvider>
           <BrowserRouter>
             <Routes>
+              <Route path="/" element={<LandingPage />} />
               <Route path="/sign-in" element={<SignInPage />} />
               <Route path="/activate" element={<ActivateEmployeePage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -45,7 +47,6 @@ export default function App() {
                 <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
               </Route>
 
-              <Route path="/" element={<Navigate to="/sign-in" replace />} />
               <Route path="*" element={<Navigate to="/sign-in" replace />} />
             </Routes>
           </BrowserRouter>
