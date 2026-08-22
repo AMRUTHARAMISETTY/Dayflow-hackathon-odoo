@@ -9,7 +9,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:h2:file:/app/data/dayflow-dev;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+      SPRING_DATASOURCE_URL: jdbc:h2:file:/app/data/dayflow-dev;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;AUTO_SERVER=TRUE
       DAYFLOW_CORS_ORIGIN: http://localhost:5173
   dayflow-web:
     image: node:26
