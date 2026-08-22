@@ -7,8 +7,10 @@ import OfflineBanner from "../components/ui/OfflineBanner"
 import SlipList from "../components/pay/SlipList"
 import SlipDetail from "../components/pay/SlipDetail"
 import { usePaySlipsQuery } from "../lib/queries"
+import { useAuth } from "../lib/auth"
 
 export default function PayPage() {
+  const { user } = useAuth()
   const { data, isLoading, isError, refetch } = usePaySlipsQuery()
   const [selectedId, setSelectedId] = useState<string>("")
 
@@ -40,7 +42,14 @@ export default function PayPage() {
             const idx = data.findIndex((s) => s.id === selectedId)
             const slip = data[idx]
             const previous = idx > 0 ? data[idx - 1] : undefined
-            return slip ? <SlipDetail slip={slip} previous={previous} /> : null
+            return slip ? (
+              <SlipDetail
+                slip={slip}
+                previous={previous}
+                employeeName={user?.name ?? ""}
+                employeeId={user?.employeeId ?? ""}
+              />
+            ) : null
           })()}
         </div>
       )}

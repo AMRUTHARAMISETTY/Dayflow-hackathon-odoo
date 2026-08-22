@@ -1,10 +1,13 @@
 package com.dayflow.api.auth;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Size;
 
 record LoginRequest(String identifier, String email, @NotBlank String password, boolean rememberDevice) {
+  String loginIdentifier() {
+    return identifier != null && !identifier.isBlank() ? identifier.trim() : email == null ? "" : email.trim();
+  }
 }
 
 /**
@@ -12,7 +15,7 @@ record LoginRequest(String identifier, String email, @NotBlank String password, 
  * EMPLOYEE account server-side (spec section 2 security rule). HR/Admin/Manager/
  * Payroll/Auditor accounts can only be created via {@code InvitationService}.
  */
-record RegisterRequest(@NotBlank String name, @Email @NotBlank String email, @NotBlank @Size(min = 8) String password) {
+record RegisterRequest(@NotBlank String name, @jakarta.validation.constraints.Email @NotBlank String email, @NotBlank @Size(min = 8) String password) {
 }
 
 record RefreshRequest(@NotBlank String refreshToken) {

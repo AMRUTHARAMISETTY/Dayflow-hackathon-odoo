@@ -13,6 +13,7 @@ import com.dayflow.api.user.UserAccount;
 import com.dayflow.api.user.UserRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,10 +28,12 @@ public class AuthService {
   private final AuditService auditService;
   private final PasswordEncoder passwordEncoder;
   private final SecurityProperties securityProperties;
+  private final LoginAttemptService loginAttemptService;
 
   public AuthService(UserRepository userRepository, EmployeeRepository employeeRepository,
       RoleRepository roleRepository, RefreshTokenRepository refreshTokenRepository, JwtService jwtService,
-      AuditService auditService, PasswordEncoder passwordEncoder, SecurityProperties securityProperties) {
+      AuditService auditService, PasswordEncoder passwordEncoder, SecurityProperties securityProperties,
+      LoginAttemptService loginAttemptService) {
     this.userRepository = userRepository;
     this.employeeRepository = employeeRepository;
     this.roleRepository = roleRepository;
@@ -39,6 +42,7 @@ public class AuthService {
     this.auditService = auditService;
     this.passwordEncoder = passwordEncoder;
     this.securityProperties = securityProperties;
+    this.loginAttemptService = loginAttemptService;
   }
 
   @Transactional
@@ -59,18 +63,40 @@ public class AuthService {
 
   @Transactional
   TokenPairResponse login(LoginRequest request, String ip) {
-    String identifier = request.identifier() == null || request.identifier().isBlank() ? request.email() : request.identifier();
-    UserAccount account = userRepository.findByEmailOrEmployeeCode(identifier)
-        .orElseThrow(() -> ApiException.unauthorized("Invalid email or password."));
+    String identifier = request.loginIdentifier();
+    String identifierKey = identifier.toLowerCase();
+
+    if (loginAttemptService.isLocked(identifierKey)) {
+      auditService.record(null, "LOGIN_BLOCKED_LOCKED", "User", identifierKey, null, null,
+          "Login attempted while identifier was locked out after repeated failures");
+      throw ApiException.locked("Too many failed attempts. Try again in "
+          + loginAttemptService.minutesRemaining(identifierKey) + " minute(s).");
+    }
+
+    Optional<UserAccount> maybeAccount = userRepository.findByIdentifier(identifier);
+    boolean credentialsValid = maybeAccount.isPresent()
+        && passwordEncoder.matches(request.password(), maybeAccount.get().passwordHash());
+
+    if (!credentialsValid) {
+      Long knownUserId = maybeAccount.map(UserAccount::id).orElse(null);
+      boolean justLockedOut = loginAttemptService.recordFailure(identifierKey);
+      auditService.record(knownUserId, "LOGIN_FAILED", "User", identifierKey, null, null,
+          maybeAccount.isEmpty() ? "No account matches this identifier" : "Password did not match");
+      if (justLockedOut) {
+        auditService.record(knownUserId, "ACCOUNT_LOCKED", "User", identifierKey, null, null,
+            "Locked after " + securityProperties.maxFailedAttempts() + " consecutive failed login attempts");
+      }
+      throw ApiException.unauthorized("Invalid email or password.");
+    }
+
+    UserAccount account = maybeAccount.get();
     if (!identifier.contains("@") && !"EMPLOYEE".equals(account.roleName())) {
       auditService.record(account.id(), "LOGIN_DENIED_EMPLOYEE_ID_FOR_PRIVILEGED_ROLE", "User",
           String.valueOf(account.id()), null, null, "Privileged users must sign in with company email or passkey");
       throw ApiException.unauthorized("Invalid email or password.");
     }
-    if (!passwordEncoder.matches(request.password(), account.passwordHash())) {
-      throw ApiException.unauthorized("Invalid email or password.");
-    }
     assertAccountAllowed(account);
+    loginAttemptService.recordSuccess(identifierKey);
     userRepository.markLoggedIn(account.id());
     auditService.record(account.id(), "LOGIN", "User", String.valueOf(account.id()), null, null, null);
     return issueTokenPair(account.id(), ip);
@@ -81,6 +107,19 @@ public class AuthService {
     String hash = SecureTokens.sha256Hex(rawToken);
     RefreshTokenRepository.ActiveToken token = refreshTokenRepository.findByHash(hash)
         .orElseThrow(() -> ApiException.unauthorized("Refresh session is invalid. Please sign in again."));
+
+    if (token.revokedAt() != null) {
+      // This token was already rotated (or explicitly revoked) once before, yet it's
+      // being presented again — the classic signal that a refresh token was stolen and
+      // an attacker is racing the legitimate client, or a legitimate client's old token
+      // leaked. Treat it as compromised: kill every active session for this user so
+      // both parties are forced to re-authenticate, rather than silently accepting it.
+      refreshTokenRepository.revokeAllForUser(token.userId());
+      auditService.record(token.userId(), "REFRESH_TOKEN_REUSE_DETECTED", "User", String.valueOf(token.userId()),
+          null, null, "A previously-rotated/revoked refresh token was presented again; all sessions for this user were revoked");
+      throw ApiException.unauthorized("This session is no longer valid. Please sign in again.");
+    }
+
     if (!token.isUsable()) {
       throw ApiException.unauthorized("Refresh session has expired. Please sign in again.");
     }

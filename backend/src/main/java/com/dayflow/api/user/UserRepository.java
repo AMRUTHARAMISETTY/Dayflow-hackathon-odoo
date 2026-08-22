@@ -33,12 +33,13 @@ public class UserRepository {
     return query(BASE_SELECT + " where lower(u.email) = lower(?) and u.active = true", email);
   }
 
-  public Optional<UserAccount> findByEmailOrEmployeeCode(String identifier) {
+  public Optional<UserAccount> findByIdentifier(String identifier) {
     String trimmed = identifier == null ? "" : identifier.trim();
     if (trimmed.contains("@")) {
       return findByEmail(trimmed);
     }
-    return query(BASE_SELECT + " where lower(emp.employee_code) = lower(?) and u.active = true", trimmed);
+    return queryArgs(BASE_SELECT + " where (lower(u.email) = lower(?) or lower(emp.employee_code) = lower(?)) and u.active = true",
+        trimmed, trimmed);
   }
 
   public Optional<UserAccount> findById(long id) {
@@ -87,8 +88,12 @@ public class UserRepository {
   }
 
   private Optional<UserAccount> query(String sql, Object arg) {
+    return queryArgs(sql, arg);
+  }
+
+  private Optional<UserAccount> queryArgs(String sql, Object... args) {
     try {
-      UserAccount base = jdbc.queryForObject(sql, this::mapWithoutPermissions, arg);
+      UserAccount base = jdbc.queryForObject(sql, this::mapWithoutPermissions, args);
       Set<String> permissions = Set.copyOf(jdbc.queryForList("""
           select p.code from permissions p
           join role_permissions rp on rp.permission_id = p.id

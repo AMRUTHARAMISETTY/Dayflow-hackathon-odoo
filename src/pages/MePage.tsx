@@ -129,7 +129,17 @@ export default function MePage() {
             </div>
           </Card>
 
-          {documentsQuery.data && <DocumentsList documents={documentsQuery.data} />}
+          {documentsQuery.data && (
+            <DocumentsList
+              documents={documentsQuery.data}
+              employee={{
+                name: user?.name ?? "",
+                employeeId: profile.readOnly.employeeId,
+                department: profile.readOnly.department,
+                designation: profile.readOnly.designation,
+              }}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -43,12 +43,19 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   if (response.status === 401 && retry && await refresh()) return api<T>(path, init, false)
   if (!response.ok) {
     const body = await response.json().catch(() => null)
-    throw new Error(body?.message ?? (response.status >= 500 ? "Dayflow is temporarily unavailable." : "The request could not be completed."))
+    throw new Error(body?.error ?? body?.message ?? (response.status >= 500 ? "Dayflow is temporarily unavailable." : "The request could not be completed."))
   }
   if (response.status === 204) return undefined as T
   const body = await response.text()
   if (!body) return undefined as T
-  return JSON.parse(body) as T
+  const parsed = JSON.parse(body)
+  // The current Spring API consistently returns { ok, data, error }.
+  // Keep compatibility with direct JSON responses used by a few local/demo paths.
+  if (parsed && typeof parsed === "object" && typeof parsed.ok === "boolean" && "data" in parsed) {
+    if (!parsed.ok) throw new Error(parsed.error ?? "The request could not be completed.")
+    return parsed.data as T
+  }
+  return parsed as T
 }
 
 export { API_URL }

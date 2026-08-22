@@ -7,15 +7,14 @@ import { Eye, EyeOff, Fingerprint, ShieldCheck } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth, type UserRole } from "../lib/auth"
 
-const companyDomain = (import.meta.env.VITE_COMPANY_EMAIL_DOMAIN ?? "dayflow.io").toLowerCase()
 const schema = z.object({ identifier: z.string().trim().min(3, "Enter your company email or ID."), password: z.string().min(1, "Enter your password."), rememberDevice: z.boolean() })
 type FormValues = z.infer<typeof schema>
 const benefits = ["Simplified attendance", "Faster leave approvals", "Secure employee records", "Smarter HR operations"]
 
 export default function SignInPage() {
-  const { signIn, signInWithPasskey } = useAuth(); const navigate = useNavigate(); const [role,setRole]=useState<UserRole>("EMPLOYEE"); const [method,setMethod]=useState<"ID"|"EMAIL"|"BIOMETRICS">("ID"); const [showPassword,setShowPassword]=useState(false); const [serverError,setServerError]=useState(""); const [passkeyBusy,setPasskeyBusy]=useState(false)
+  const { signIn, signInWithPasskey } = useAuth(); const navigate = useNavigate(); const [role,setRole]=useState<UserRole>("EMPLOYEE"); const [method,setMethod]=useState<"ID"|"EMAIL"|"BIOMETRICS">("EMAIL"); const [showPassword,setShowPassword]=useState(false); const [serverError,setServerError]=useState(""); const [passkeyBusy,setPasskeyBusy]=useState(false)
   const { register,handleSubmit,formState:{errors,isSubmitting} }=useForm<FormValues>({resolver:zodResolver(schema),defaultValues:{identifier:"",password:"",rememberDevice:false}})
-  async function submit(values:FormValues){setServerError("");if(method==="EMAIL"&&!values.identifier.toLowerCase().endsWith(`@${companyDomain}`)){setServerError(`Use your @${companyDomain} company email.`);return}try{const result=await signIn(values.identifier,values.password,values.rememberDevice,role);if(result.mfa){navigate(`/verify-otp?identifier=${encodeURIComponent(result.identifier)}&purpose=ADMIN_LOGIN`);return}navigate(role==="ADMIN_HR"?"/admin/dashboard":"/employee/dashboard")}catch(error){setServerError(error instanceof Error?error.message:"The provided credentials could not be verified.")}}
+  async function submit(values:FormValues){setServerError("");if(method==="EMAIL"&&!z.string().email().safeParse(values.identifier).success){setServerError("Enter a valid company email address.");return}try{const result=await signIn(values.identifier,values.password,values.rememberDevice,role);if(result.mfa){navigate(`/verify-otp?identifier=${encodeURIComponent(result.identifier)}&purpose=ADMIN_LOGIN`);return}navigate(role==="ADMIN_HR"?"/admin/dashboard":"/employee/dashboard")}catch(error){setServerError(error instanceof Error?error.message:"The provided credentials could not be verified.")}}
   async function passkey(){setServerError("");setPasskeyBusy(true);try{const user=await signInWithPasskey();if(!user.roles.includes(role))throw new Error("This account does not have permission to access the selected portal.");navigate(role==="ADMIN_HR"?"/admin/dashboard":"/employee/dashboard")}catch(error){setServerError(error instanceof Error?error.message:"Biometric verification failed.")}finally{setPasskeyBusy(false)}}
   return <main className="auth-layout">
     <motion.section className="auth-brand" initial={{opacity:0}} animate={{opacity:1}} aria-label="About Dayflow">

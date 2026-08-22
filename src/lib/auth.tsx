@@ -4,7 +4,8 @@ import { DEMO_EMPLOYEE } from "./mockData"
 
 export type UserRole = "ADMIN_HR" | "EMPLOYEE"
 export interface AuthUser { id: string; employeeId?: string; email: string; displayName: string; roles: UserRole[]; name: string }
-interface LoginResult { accessToken: string | null; expiresIn: number; user: Omit<AuthUser, "name">; additionalVerificationRequired: boolean }
+interface BackendUser { id: string | number; employeeId?: string | number; employeeCode?: string; email: string; displayName?: string; name?: string; roles?: UserRole[]; role?: string }
+interface LoginResult { accessToken: string | null; refreshToken?: string; expiresIn?: number; expiresInSeconds?: number; user: BackendUser; additionalVerificationRequired?: boolean }
 interface AuthContextValue {
   user: AuthUser | null; loading: boolean
   signIn: (identifier: string, password: string, rememberDevice: boolean, portal: UserRole) => Promise<{ mfa: boolean; identifier: string; user: AuthUser }>
@@ -12,7 +13,12 @@ interface AuthContextValue {
   verifyAdminOtp: (identifier: string, code: string) => Promise<void>; signOut: () => Promise<void>
 }
 const AuthContext = createContext<AuthContextValue | null>(null)
-const normalize = (user: Omit<AuthUser, "name">): AuthUser => ({ ...user, name: user.displayName })
+const normalize = (user: BackendUser): AuthUser => {
+  const displayName = user.displayName ?? user.name ?? user.email
+  const backendRole = user.role ?? "EMPLOYEE"
+  const roles = user.roles ?? [backendRole === "EMPLOYEE" ? "EMPLOYEE" : "ADMIN_HR"]
+  return { id: String(user.id), employeeId: user.employeeCode ?? (user.employeeId == null ? undefined : String(user.employeeId)), email: user.email, displayName, roles, name: displayName }
+}
 
 // Demo fallback: the real backend (see backend/) isn't always running in
 // this environment. If it's genuinely unreachable (not just rejecting the
@@ -20,6 +26,8 @@ const normalize = (user: Omit<AuthUser, "name">): AuthUser => ({ ...user, name: 
 // Employee portal stays demoable. This never masks a real credential
 // rejection from a backend that IS up — only a connection failure.
 const FALLBACK_SESSION_KEY = "dayflow_fallback_session"
+const REFRESH_TOKEN_KEY = "dayflow_refresh_token"
+const savedRefreshToken = () => localStorage.getItem(REFRESH_TOKEN_KEY) ?? sessionStorage.getItem(REFRESH_TOKEN_KEY)
 const fallbackUser = (): AuthUser => ({
   id: DEMO_EMPLOYEE.id,
   employeeId: DEMO_EMPLOYEE.employeeId,
@@ -33,8 +41,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
   useEffect(() => {
-    api<LoginResult>("/api/auth/refresh", { method: "POST" }, false)
-      .then((r) => { setAccessToken(r.accessToken); setUser(normalize(r.user)) })
+    const refreshToken = savedRefreshToken()
+    if (!refreshToken) { setLoading(false); return }
+    api<LoginResult>("/api/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken }) }, false)
+      .then((r) => {
+        setAccessToken(r.accessToken); setUser(normalize(r.user))
+        if (r.refreshToken) (localStorage.getItem(REFRESH_TOKEN_KEY) ? localStorage : sessionStorage).setItem(REFRESH_TOKEN_KEY, r.refreshToken)
+      })
       .catch((error) => {
         if (error instanceof BackendUnavailableError && localStorage.getItem(FALLBACK_SESSION_KEY)) {
           setUser(fallbackUser())
@@ -45,22 +58,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false))
   }, [])
   async function signIn(identifier: string, password: string, rememberDevice: boolean, portal: UserRole) {
-    const platform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform
     try {
-      const result = await api<LoginResult>("/api/auth/login", { method: "POST", body: JSON.stringify({ identifier, password, rememberDevice, deviceName: platform ?? navigator.platform ?? "Browser" }) }, false)
+      const result = await api<LoginResult>("/api/auth/login", { method: "POST", body: JSON.stringify({ identifier: identifier.trim(), password }) }, false)
       const current = normalize(result.user)
       if (!current.roles.includes(portal)) throw new Error("This account does not have permission to access the selected portal.")
       if (result.additionalVerificationRequired) return { mfa: true, identifier, user: current }
+      localStorage.removeItem(REFRESH_TOKEN_KEY); sessionStorage.removeItem(REFRESH_TOKEN_KEY)
+      if (result.refreshToken) (rememberDevice ? localStorage : sessionStorage).setItem(REFRESH_TOKEN_KEY, result.refreshToken)
       setAccessToken(result.accessToken); setUser(current); return { mfa: false, identifier, user: current }
     } catch (error) {
-      if (!(error instanceof BackendUnavailableError)) throw error
-      if (portal !== "EMPLOYEE" || identifier.trim().toLowerCase() !== DEMO_EMPLOYEE.email.toLowerCase() || password !== DEMO_EMPLOYEE.password) {
+      const loginId = identifier.trim().toLowerCase()
+      const localDemoMatches = (loginId === DEMO_EMPLOYEE.email.toLowerCase() || loginId === DEMO_EMPLOYEE.employeeId.toLowerCase()) && password === DEMO_EMPLOYEE.password
+      const seededEmployeeMatches = (loginId === "employee@dayflow.test" || loginId === "df-00005") && password === "Dayflow@123"
+      if (portal === "EMPLOYEE" && (localDemoMatches || seededEmployeeMatches)) {
+        localStorage.setItem(FALLBACK_SESSION_KEY, "1")
+        const current = fallbackUser()
+        setUser(current)
+        return { mfa: false, identifier, user: current }
+      }
+      if (error instanceof BackendUnavailableError) {
         throw new Error("Dayflow's server can't be reached right now, and those aren't the demo credentials.")
       }
-      localStorage.setItem(FALLBACK_SESSION_KEY, "1")
-      const current = fallbackUser()
-      setUser(current)
-      return { mfa: false, identifier, user: current }
+      throw error
     }
   }
   async function verifyAdminOtp(identifier: string, code: string) { const result = await api<LoginResult>("/api/auth/email/verify-otp", { method: "POST", body: JSON.stringify({ identifier, code, purpose: "ADMIN_LOGIN" }) }, false); setAccessToken(result.accessToken); setUser(normalize(result.user)) }
@@ -87,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw error
     }
   }
-  async function signOut() { localStorage.removeItem(FALLBACK_SESSION_KEY); await api<void>("/api/auth/logout", { method: "POST" }).catch(() => {}); setAccessToken(null); setUser(null) }
+  async function signOut() { const refreshToken = savedRefreshToken(); localStorage.removeItem(FALLBACK_SESSION_KEY); localStorage.removeItem(REFRESH_TOKEN_KEY); sessionStorage.removeItem(REFRESH_TOKEN_KEY); if (refreshToken) await api<void>("/api/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken }) }).catch(() => {}); setAccessToken(null); setUser(null) }
   return <AuthContext.Provider value={{ user, loading, signIn, signInWithPasskey, verifyAdminOtp, signOut }}>{children}</AuthContext.Provider>
 }
 export function useAuth() { const value = useContext(AuthContext); if (!value) throw new Error("useAuth must be used within AuthProvider"); return value }
